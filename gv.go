@@ -1,28 +1,21 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"math/rand"
 	"time"
 
+	"github.com/jroimartin/gocui"
 	"github.com/nsf/termbox-go"
 )
 
-// Standard line drawing characters
-const tlcorner = '\u250c'
-const trcorner = '\u2510'
-const llcorner = '\u2514'
-const lrcorner = '\u2518'
-const hline = '\u2500'
-const vline = '\u2502'
+/*
 
-// Bold line drawing characters
-const btlcorner = '\u250f'
-const btrcorner = '\u2513'
-const bllcorner = '\u2517'
-const blrcorner = '\u251b'
-const bhline = '\u2501'
-const bvline = '\u2503'
+	So we will use Termbox to do direct screen stuff as an editor, and use gocui Views as a way to do pop-ups and other effects/special things.
+
+*/
+
+const delta = 1
 
 type category struct {
 	name string
@@ -37,53 +30,66 @@ type headline struct {
 	visible    bool // Is this Node visible or collapsed?
 }
 
-var outline []*headline
+var root *headline
 var renderbuf [][]rune
 
 var toprow int // topmost visible row in renderbuf
 var width int
 var height int
 
-func print(x int, y int, text string) {
-	for _, c := range text {
-		termbox.SetCell(x, y, c, termbox.ColorWhite, termbox.ColorBlack)
-		x++
-	}
+var gui *gocui.Gui
+
+// Standard line drawing characters
+const tlcorner = '\u250c'
+const trcorner = '\u2510'
+const llcorner = '\u2514'
+const lrcorner = '\u2518'
+const hline = '\u2500'
+const vline = '\u2502'
+
+var lorem = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+
+func generateHeadline() string {
+	length := rand.Intn(len(lorem))
+	return lorem[0:length]
 }
 
-func generateOutline(depth int) {
-	rand.Seed(time.Now().UnixNano())
-	hlc := rand.Intn(50) + 10 // # headlines
-	for h := 0; h < hlc; h++ {
-		title := fmt.Sprintf("Headline %d", h)
-		outline = append(outline, &headline{title, nil, nil, nil, nil, true})
-		cc := rand.Intn(5) + 3 // # children
-		for c := 0; c < cc; c++ {
-			title := fmt.Sprintf("Child %d", c)
-			outline[h].children = append(outline[h].children, &headline{title, nil, nil, nil, outline[h], true})
+func generateOutline(depth int) *headline {
+	if depth != 0 {
+		t := generateHeadline()
+		hl := &headline{t, nil, nil, nil, nil, true}
+		rand.Seed(time.Now().UnixNano())
+		hlc := rand.Intn(5) + 5 // # children
+		hl.children = make([]*headline, hlc)
+		for h, _ := range hl.children {
+			hl.children[h] = generateOutline(depth - 1)
 		}
+		return hl
 	}
+	return nil
 }
 
 func renderHeadline(h *headline, indent int) {
-	var hlrow []rune
-	//indent
-	for i := 0; i < indent; i++ {
-		hlrow = append(hlrow, '-')
-	}
-	//title
-	for _, r := range h.text {
-		hlrow = append(hlrow, r)
-	}
-	renderbuf = append(renderbuf, hlrow)
-	for _, c := range h.children {
-		renderHeadline(c, indent+1)
+	if h != nil {
+		var hlrow []rune
+		//indent
+		for i := 0; i < indent; i++ {
+			hlrow = append(hlrow, '-')
+		}
+		//title
+		for _, r := range h.text {
+			hlrow = append(hlrow, r)
+		}
+		renderbuf = append(renderbuf, hlrow)
+		for _, c := range h.children {
+			renderHeadline(c, indent+1)
+		}
 	}
 }
 
 func renderOutline() {
 	renderbuf = nil
-	for _, h := range outline {
+	for _, h := range root.children {
 		renderHeadline(h, 0)
 	}
 }
@@ -97,7 +103,8 @@ func drawOutline() {
 			// TODO: change to index based when doing horizontal scrolling
 			for _, col := range renderbuf[row] {
 				if x < width-2 {
-					termbox.SetCell(x, y, col, termbox.ColorWhite, termbox.ColorBlack)
+					//termbox.SetCell(x, y, col, termbox.ColorWhite, termbox.ColorBlack)
+					gui.SetRune(x, y, col, gocui.ColorWhite, gocui.ColorBlack)
 				}
 				x++
 			}
@@ -108,19 +115,19 @@ func drawOutline() {
 
 func drawBorder(x, y, width, height int) {
 	// Corners
-	termbox.SetCell(x, y, tlcorner, termbox.ColorWhite, termbox.ColorBlack)
-	termbox.SetCell(x+width-1, y, trcorner, termbox.ColorWhite, termbox.ColorBlack)
-	termbox.SetCell(x, y+height-1, llcorner, termbox.ColorWhite, termbox.ColorBlack)
-	termbox.SetCell(x+width-1, y+height-1, lrcorner, termbox.ColorWhite, termbox.ColorBlack)
+	gui.SetRune(x, y, tlcorner, gocui.ColorWhite, gocui.ColorBlack)
+	gui.SetRune(x+width-1, y, trcorner, gocui.ColorWhite, gocui.ColorBlack)
+	gui.SetRune(x, y+height-1, llcorner, gocui.ColorWhite, gocui.ColorBlack)
+	gui.SetRune(x+width-1, y+height-1, lrcorner, gocui.ColorWhite, gocui.ColorBlack)
 	// Horizontal
 	for bx := x + 1; bx < x+width-1; bx++ {
-		termbox.SetCell(bx, y, hline, termbox.ColorWhite, termbox.ColorBlack)
-		termbox.SetCell(bx, y+height-1, hline, termbox.ColorWhite, termbox.ColorBlack)
+		gui.SetRune(bx, y, hline, gocui.ColorWhite, gocui.ColorBlack)
+		gui.SetRune(bx, y+height-1, hline, gocui.ColorWhite, gocui.ColorBlack)
 	}
 	// Vertical
 	for by := y + 1; by < y+height-1; by++ {
-		termbox.SetCell(x, by, vline, termbox.ColorWhite, termbox.ColorBlack)
-		termbox.SetCell(x+width-1, by, vline, termbox.ColorWhite, termbox.ColorBlack)
+		gui.SetRune(x, by, vline, gocui.ColorWhite, gocui.ColorBlack)
+		gui.SetRune(x+width-1, by, vline, gocui.ColorWhite, gocui.ColorBlack)
 	}
 }
 
@@ -131,59 +138,68 @@ func drawScreen() {
 	termbox.Flush()
 }
 
-func drawResize(width int, height int) {
-	message := fmt.Sprintf("Hello World %d X %d", width, height)
-	print(10, 15, message)
-	termbox.Flush()
+func layout(g *gocui.Gui) error {
+	width, height = g.Size()
+	renderOutline()
+	drawBorder(0, 0, width, height)
+	drawOutline()
+	return nil
+}
+
+func initKeybindings(g *gocui.Gui) error {
+	if err := g.SetKeybinding("", gocui.KeyCtrlC, gocui.ModNone,
+		func(g *gocui.Gui, v *gocui.View) error {
+			return gocui.ErrQuit
+		}); err != nil {
+		return err
+	}
+	if err := g.SetKeybinding("", gocui.KeyTab, gocui.ModNone,
+		func(g *gocui.Gui, v *gocui.View) error {
+			return nil
+		}); err != nil {
+		return err
+	}
+	if err := g.SetKeybinding("", gocui.KeyArrowDown, gocui.ModNone,
+		func(g *gocui.Gui, v *gocui.View) error {
+			if toprow != len(renderbuf)-height-2 {
+				toprow++
+				drawScreen()
+			}
+			return nil
+		}); err != nil {
+		return err
+	}
+	if err := g.SetKeybinding("", gocui.KeyArrowUp, gocui.ModNone,
+		func(g *gocui.Gui, v *gocui.View) error {
+			if toprow != 0 {
+				toprow--
+				drawScreen()
+			}
+			return nil
+		}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func main() {
 
-	// Draw a bordered window that resizes when terminal resizes
-	err := termbox.Init()
+	root = generateOutline(5)
+
+	var err error
+	gui, err = gocui.NewGui(gocui.OutputNormal)
 	if err != nil {
-		panic(err)
+		log.Panicln(err)
 	}
-	defer termbox.Close()
+	defer gui.Close()
 
-	termbox.SetInputMode(termbox.InputEsc | termbox.InputMouse)
-	width, height = termbox.Size()
+	gui.SetManagerFunc(layout)
 
-	generateOutline(3)
-	renderOutline()
-
-	drawScreen()
-	drawResize(width, height)
-
-loop:
-	for {
-		switch ev := termbox.PollEvent(); ev.Type {
-		case termbox.EventKey:
-			if ev.Key == termbox.KeyCtrlQ {
-				break loop
-			}
-			if ev.Key == termbox.KeyArrowDown {
-				if toprow != len(renderbuf)-height-2 {
-					toprow++
-					drawScreen()
-				}
-			}
-			if ev.Key == termbox.KeyArrowUp {
-				if toprow != 0 {
-					toprow--
-					drawScreen()
-				}
-			}
-		case termbox.EventResize:
-			drawScreen()
-			width = ev.Width
-			height = ev.Height
-			drawResize(ev.Width, ev.Height)
-		case termbox.EventMouse:
-			drawScreen()
-		case termbox.EventError:
-			panic(ev.Err)
-		}
+	if err := initKeybindings(gui); err != nil {
+		log.Panicln(err)
 	}
 
+	if err := gui.MainLoop(); err != nil && err != gocui.ErrQuit {
+		log.Panicln(err)
+	}
 }
