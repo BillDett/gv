@@ -16,9 +16,8 @@ type category struct {
 }
 
 type headline struct {
-	text       string
+	text       []rune
 	children   []*headline
-	document   *string
 	categories []*category
 	parent     *headline
 	visible    bool // Is this Node visible or collapsed?
@@ -41,7 +40,8 @@ const lrcorner = '\u2518'
 const hline = '\u2500'
 const vline = '\u2502'
 
-var lorem = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+//var lorem = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+var lorem = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor."
 
 func generateHeadline() string {
 	length := rand.Intn(len(lorem))
@@ -51,7 +51,7 @@ func generateHeadline() string {
 func generateOutline(depth int) *headline {
 	if depth != 0 {
 		t := generateHeadline()
-		hl := &headline{t, nil, nil, nil, nil, true}
+		hl := &headline{[]rune(t), nil, nil, nil, true}
 		rand.Seed(time.Now().UnixNano())
 		hlc := rand.Intn(5) + 5 // # children
 		hl.children = make([]*headline, hlc)

@@ -1,0 +1,58 @@
++------------------------------------------------------------------------------+
+|+   1. What is GrandView?                                                     |
+|-      a. In a single-pane outliner, all the components of your outline and   | 
+|          its accompanying information are visible in one window.             |
+|-      b. Project and task manager                                            |
+|-      c. Information manager                                                 |
+|+   2. What makes GrandView so unique even today?  How is it possible that    |
+|       such a product like this could exist?                                  |
+|+      a. Multiple Views                                                      |
+|-         i. Outline View                                                     |
+|-        ii. You can associate any headline (node) with a document. Document  |
+|             view is essentially a hoist that removes all the other elements  |
+|             of your outline from the screen so you can focus on writing the  |
+|             one document. When you are done writing this document (or        |
+|             section of your outline), you can return to outline view, where  |
+|             your document text...                                            |
+|-       iii. Category & Calendar Views                                        |
+|+      b. Fully customizable meta-data                                        |
+|-         i. Apply meta-data to each node of the outline (this information is |
++------------------------------------------------------------------------------+
+|    Status Message and/or input field: __________________________________     |
+
+
+First character of each row:
+    '+'  denotes a headline with children
+    '-'  denotes a headling without children
+    ' '  denotes a multi-line headline
+
+Outline Numbering (decimal [1..999], letter [a..zz (325)], roman [i..xvi (16)]) repeating...
+Outline Bullets (*, etc..)
+
+Headlines that span past the right most border word wrap onto subsequent lines, indented accordingly.  They word wrap
+against the right most margin.  Headlines can be any length.
+
+Notes on how to navigate:
+    Using the arrow keys, we want to make sure that moving up and down we are able to edit directly wherever the cursor
+lands while preserving the outline/document structure.  So the following rules can be applied whenever we move
+up or down:
+    * Down:
+        * If on a headline, and length > width of screen, then calculate which character to land on directly below
+            where we are (or end of headline).  If no line below, then move to next sibling headline.  if no sibling
+            headline, go to parent and go its next sibling.  If parent has no siblings, recursively repeat for next
+            parent, etc..
+        * If on a headline, and length <= width of screen, then move to first child.  if no children, move to next
+            headline.  If no next headline, do nothing.
+    * Up:
+        * If on a headline, and length > width of screen, then calculate which character to land on directly above
+          where we are.  If no line above, go to previous sibling.  If no previous sibling go to parent.  If no
+          parent, do nothing.
+        * If on a headline, and length <= width of screen, then move to previous sibling.  If no previous sibling,
+          go to parent.  If no parent, do nothing.
+
+-> Need a little "micro-editor" that works on a single slice of runes- not intended for huge documents.
+    Assume it works on a fixed width, but arbitrary length window.
+    Should word wrap like shown above.  Use for editing headlines in-place.
+
+-> IDEA- no such thing as documents.  All headlines can be as big as you want.  That's MUCH simpler- all editing can be
+    done in-place then.
