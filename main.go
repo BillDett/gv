@@ -1,18 +1,13 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"math/rand"
+	"os"
 	"time"
 
-	"github.com/jroimartin/gocui"
-	"github.com/nsf/termbox-go"
+	"github.com/gdamore/tcell/v2"
 )
-
-/*
-
-	NOTE: NOT USING THIS ANYMORE- SEE main.go
-*/
 
 const delta = 1
 
@@ -36,7 +31,7 @@ var toprow int // topmost visible row in renderbuf
 var width int
 var height int
 
-var gui *gocui.Gui
+var defStyle tcell.Style
 
 // Standard line drawing characters
 const tlcorner = '\u250c'
@@ -93,7 +88,7 @@ func renderOutline() {
 	}
 }
 
-func drawOutline() {
+func drawOutline(s tcell.Screen) {
 	// Draw the renderBuf to the screen
 	y := 1
 	for row := toprow; row < len(renderbuf); row++ {
@@ -102,8 +97,7 @@ func drawOutline() {
 			// TODO: change to index based when doing horizontal scrolling
 			for _, col := range renderbuf[row] {
 				if x < width-2 {
-					//termbox.SetCell(x, y, col, termbox.ColorWhite, termbox.ColorBlack)
-					gui.SetRune(x, y, col, gocui.ColorWhite, gocui.ColorBlack)
+					s.SetContent(x, y, col, nil, defStyle)
 				}
 				x++
 			}
@@ -112,93 +106,80 @@ func drawOutline() {
 	}
 }
 
-func drawBorder(x, y, width, height int) {
+func drawBorder(s tcell.Screen, x, y, width, height int) {
 	// Corners
-	gui.SetRune(x, y, tlcorner, gocui.ColorWhite, gocui.ColorBlack)
-	gui.SetRune(x+width-1, y, trcorner, gocui.ColorWhite, gocui.ColorBlack)
-	gui.SetRune(x, y+height-1, llcorner, gocui.ColorWhite, gocui.ColorBlack)
-	gui.SetRune(x+width-1, y+height-1, lrcorner, gocui.ColorWhite, gocui.ColorBlack)
+	s.SetContent(x, y, tlcorner, nil, defStyle)
+	s.SetContent(x+width-1, y, trcorner, nil, defStyle)
+	s.SetContent(x, y+height-1, llcorner, nil, defStyle)
+	s.SetContent(x+width-1, y+height-1, lrcorner, nil, defStyle)
 	// Horizontal
 	for bx := x + 1; bx < x+width-1; bx++ {
-		gui.SetRune(bx, y, hline, gocui.ColorWhite, gocui.ColorBlack)
-		gui.SetRune(bx, y+height-1, hline, gocui.ColorWhite, gocui.ColorBlack)
+		s.SetContent(bx, y, hline, nil, defStyle)
+		s.SetContent(bx, y+height-1, hline, nil, defStyle)
 	}
 	// Vertical
 	for by := y + 1; by < y+height-1; by++ {
-		gui.SetRune(x, by, vline, gocui.ColorWhite, gocui.ColorBlack)
-		gui.SetRune(x+width-1, by, vline, gocui.ColorWhite, gocui.ColorBlack)
+		s.SetContent(x, by, vline, nil, defStyle)
+		s.SetContent(x+width-1, by, vline, nil, defStyle)
 	}
 }
 
-func drawScreen() {
-	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
-	drawBorder(0, 0, width, height)
-	drawOutline()
-	termbox.Flush()
-}
-
-func layout(g *gocui.Gui) error {
-	width, height = g.Size()
+func drawScreen(s tcell.Screen) {
+	width, height = s.Size()
+	s.Clear()
+	drawBorder(s, 0, 0, width, height)
 	renderOutline()
-	drawBorder(0, 0, width, height)
-	drawOutline()
-	return nil
+	drawOutline(s)
+	s.Show()
 }
 
-func initKeybindings(g *gocui.Gui) error {
-	if err := g.SetKeybinding("", gocui.KeyCtrlC, gocui.ModNone,
-		func(g *gocui.Gui, v *gocui.View) error {
-			return gocui.ErrQuit
-		}); err != nil {
-		return err
-	}
-	if err := g.SetKeybinding("", gocui.KeyTab, gocui.ModNone,
-		func(g *gocui.Gui, v *gocui.View) error {
-			return nil
-		}); err != nil {
-		return err
-	}
-	if err := g.SetKeybinding("", gocui.KeyArrowDown, gocui.ModNone,
-		func(g *gocui.Gui, v *gocui.View) error {
-			if toprow != len(renderbuf)-height-2 {
-				toprow++
-				drawScreen()
+func handleEvents(s tcell.Screen) {
+	for {
+		switch ev := s.PollEvent().(type) {
+		case *tcell.EventResize:
+			s.Sync()
+			drawScreen(s)
+		case *tcell.EventKey:
+			switch ev.Key() {
+			case tcell.KeyEscape:
+				s.Fini()
+				os.Exit(0)
+			case tcell.KeyDown:
+				if toprow != len(renderbuf)-height-2 {
+					toprow++
+					drawScreen(s)
+				}
+			case tcell.KeyUp:
+				if toprow != 0 {
+					toprow--
+					drawScreen(s)
+				}
 			}
-			return nil
-		}); err != nil {
-		return err
+		}
 	}
-	if err := g.SetKeybinding("", gocui.KeyArrowUp, gocui.ModNone,
-		func(g *gocui.Gui, v *gocui.View) error {
-			if toprow != 0 {
-				toprow--
-				drawScreen()
-			}
-			return nil
-		}); err != nil {
-		return err
-	}
-	return nil
 }
 
 func main() {
 
 	root = generateOutline(5)
 
-	var err error
-	gui, err = gocui.NewGui(gocui.OutputNormal)
-	if err != nil {
-		log.Panicln(err)
+	s, e := tcell.NewScreen()
+	if e != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", e)
+		os.Exit(1)
 	}
-	defer gui.Close()
-
-	gui.SetManagerFunc(layout)
-
-	if err := initKeybindings(gui); err != nil {
-		log.Panicln(err)
+	if e := s.Init(); e != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", e)
+		os.Exit(1)
 	}
 
-	if err := gui.MainLoop(); err != nil && err != gocui.ErrQuit {
-		log.Panicln(err)
-	}
+	defStyle = tcell.StyleDefault.
+		Background(tcell.ColorBlack).
+		Foreground(tcell.ColorGreen)
+	s.SetStyle(defStyle)
+
+	drawScreen(s)
+
+	handleEvents(s)
+
 }
