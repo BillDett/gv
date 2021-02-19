@@ -50,9 +50,18 @@ up or down:
         * If on a headline, and length <= width of screen, then move to previous sibling.  If no previous sibling,
           go to parent.  If no parent, do nothing.
 
+-> IDEA- no such thing as documents.  All headlines can be as big as you want.  That's MUCH simpler- all editing can be
+    done in-place then.
+
 -> Need a little "micro-editor" that works on a single slice of runes- not intended for huge documents.
     Assume it works on a fixed width, but arbitrary length window.
     Should word wrap like shown above.  Use for editing headlines in-place.
 
--> IDEA- no such thing as documents.  All headlines can be as big as you want.  That's MUCH simpler- all editing can be
-    done in-place then.
+Editor width set to a percentage of overall window size (e.g. 70%).  This allows us to scroll right w/out dealing with expanding editor
+widths as well.
+
+Render the text to the editor window and wrap on word/punctuation boundaries.
+
+When editing text- keep the text in a 2-D slice the same size as the editor width but with variable height.
+Edit *directly* in the slice, doing a new layout (new slice) for each update.  Arrow movements correspond directly then with slice indices.
+Then we just write the slice to the screen directly like an image buffer.

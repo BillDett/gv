@@ -16,15 +16,24 @@ type category struct {
 }
 
 type headline struct {
-	text       []rune
+	text       [][]rune
 	children   []*headline
 	categories []*category
 	parent     *headline
 	visible    bool // Is this Node visible or collapsed?
 }
 
+type editor struct {
+	x     int
+	y     int
+	width int
+	buf   [][]rune
+}
+
 var root *headline
 var renderbuf [][]rune
+
+var editorWidth int // How wide is editor as % of terminal width
 
 var toprow int // topmost visible row in renderbuf
 var width int
@@ -126,12 +135,30 @@ func drawBorder(s tcell.Screen, x, y, width, height int) {
 
 func drawScreen(s tcell.Screen) {
 	width, height = s.Size()
+	editorWidth = int(width * 0.7)
 	s.Clear()
 	drawBorder(s, 0, 0, width, height)
-	renderOutline()
-	drawOutline(s)
+	//renderOutline()
+	//drawOutline(s)
+	e.Draw()
 	s.Show()
 }
+
+func NewEditor(s tcell.Screen) *editor {
+	if s == nil {
+		return nil
+	}
+	baseLines := 3 // Default # of lines for each editor
+	width, height = s.Size()
+	ew := int(width * 0.7)
+	buf := make([][]rune, baseLines)
+	for i := range buf {
+		buf[i] = make([]rune, ew)
+	}
+	return &editor{5, 5, ew, buf}
+}
+
+func (editor *e) 
 
 func handleEvents(s tcell.Screen) {
 	for {
@@ -177,6 +204,8 @@ func main() {
 		Background(tcell.ColorBlack).
 		Foreground(tcell.ColorGreen)
 	s.SetStyle(defStyle)
+
+	e := NewEditor(s)
 
 	drawScreen(s)
 
