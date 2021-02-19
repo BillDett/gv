@@ -12,7 +12,7 @@ import (
 type piece struct {
 	source *[]rune // should point to original or add slices in piecetable
 	start  int
-	length int
+	length int // Sum of all piece lengths == length of final edited text
 }
 
 // PieceTable manages efficient edits to a string of text
@@ -83,7 +83,7 @@ func (p *PieceTable) Insert(position int, fragment string) {
 		p.pieces[i].length -= newRemainder            // "shrink" this piece where we split it
 		p.pieces = insertPiece(p.pieces, newadd, i+1) // Insert a piece for the thing we're inserting after split
 		p.pieces = insertPiece(p.pieces,
-			piece{p.pieces[i].source, p.pieces[i].start + 1, newRemainder}, i+2) // Insert new piece (which we split from p.pieces[i]) for remainder
+			piece{p.pieces[i].source, p.pieces[i].start + p.pieces[i].length, newRemainder}, i+2) // Insert new piece (which we split from p.pieces[i]) for remainder
 	}
 
 	p.lastpos += length
@@ -92,8 +92,30 @@ func (p *PieceTable) Insert(position int, fragment string) {
 
 // Delete removes length characters starting at position
 func (p *PieceTable) Delete(position int, length int) {
-	// TODO
-
+	/* If delete is contained within a single piece:
+		if delete is not at beginning or end of list:
+		  Split the piece and adjust the lengths "around" the deleted span
+		else:
+		  Adjust the start/length accordingly to remove from beginning or end of piece
+	  else:
+	    For each piece in the span:
+		  If first piece, adjust the length to just before where span starts
+		  If last piece, adjust the start to just after the span ends
+		  otherwise, remove the piece
+	*/
+	totalLength := 0
+	i := 0
+	for i < len(p.pieces) {
+		totalLength += p.pieces[i].length
+		if totalLength >= position {
+			break
+		}
+		i++
+	}
+	// We're on the piece that needs to be split
+	if i == 0 {
+		// This is the first piece- just adjust the length
+	}
 }
 
 // Text returns the string being managed by the PieceTable with all edits applied
@@ -115,7 +137,7 @@ func insertPiece(slice []piece, newpiece piece, index int) []piece {
 }
 
 func main() {
-	pt := NewPieceTable("ABCDE")
+	pt := NewPieceTable("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	fmt.Println(pt.Text())
 
 	pt.Dump()
@@ -125,7 +147,7 @@ func main() {
 
 	pt.Dump()
 
-	pt.Insert(8, "BAR")
+	pt.Insert(16, "BAR")
 	fmt.Println(pt.Text())
 
 	pt.Dump()
