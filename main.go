@@ -16,7 +16,7 @@ type category struct {
 }
 
 type headline struct {
-	text       [][]rune
+	text       []rune
 	children   []*headline
 	categories []*category
 	parent     *headline
@@ -135,15 +135,16 @@ func drawBorder(s tcell.Screen, x, y, width, height int) {
 
 func drawScreen(s tcell.Screen) {
 	width, height = s.Size()
-	editorWidth = int(width * 0.7)
+	//editorWidth = int(width * 0.7)
 	s.Clear()
 	drawBorder(s, 0, 0, width, height)
-	//renderOutline()
-	//drawOutline(s)
-	e.Draw()
+	renderOutline()
+	drawOutline(s)
+	//e.Draw()
 	s.Show()
 }
 
+/*
 func NewEditor(s tcell.Screen) *editor {
 	if s == nil {
 		return nil
@@ -157,8 +158,7 @@ func NewEditor(s tcell.Screen) *editor {
 	}
 	return &editor{5, 5, ew, buf}
 }
-
-func (editor *e) 
+*/
 
 func handleEvents(s tcell.Screen) {
 	for {
@@ -205,7 +205,7 @@ func main() {
 		Foreground(tcell.ColorGreen)
 	s.SetStyle(defStyle)
 
-	e := NewEditor(s)
+	//e := NewEditor(s)
 
 	drawScreen(s)
 

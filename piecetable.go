@@ -65,7 +65,6 @@ func (p *PieceTable) Insert(position int, fragment string) {
 		p.pieces = append([]piece{newadd}, p.pieces...)
 	} else if position == p.lastpos {
 		// append newadd to end of pieces list
-		// update p.lastpos accordingly
 		p.pieces = append(p.pieces, newadd)
 	} else {
 		// We have to look for the right piece now to split so we can insert mid-string
@@ -92,29 +91,8 @@ func (p *PieceTable) Insert(position int, fragment string) {
 
 // Delete removes length characters starting at position
 func (p *PieceTable) Delete(position int, spanLength int) {
-	/* If delete is contained within a single piece:
-		if delete is not at beginning or end of list:
-		  Split the piece and adjust the lengths "around" the deleted span
-		else:
-		  Adjust the start/length accordingly to remove from beginning or end of piece
-	  else:
-	    For each piece in the span:
-		  If first piece, adjust the length to just before where span starts
-		  If last piece, adjust the start to just after the span ends
-		  otherwise, remove the piece
-
-
-	Iterate through the pieces until you find a piece containing first character of the span (position)
-	If the span is within this one piece:
-		Adjust the start/length of the piece to delete the span
-	Else:
-		remainder is total length seen so far - position
-
-
-	*/
-
-	// TODO: THIS PART IS PRETTY BUSTED...
-
+	fmt.Printf("Deleting at position %d for %d runes\n", position, spanLength)
+	// First step is to figure out which piece begins the span
 	totalLength := 0
 	i := 0
 	for i < len(p.pieces) {
@@ -124,12 +102,31 @@ func (p *PieceTable) Delete(position int, spanLength int) {
 		}
 		i++
 	}
+
+	// Now process the delete depending on how many pieces the span crosses
 	newRemainder := (totalLength - position)
-	fmt.Printf("Found span start in piece %d\n", i)
+	fmt.Printf("Found span start in piece %d, TL=%d, NR=%d\n", i, totalLength, newRemainder)
 	if p.pieces[i].length >= spanLength {
-		fmt.Printf("Delete entirely within this piece\n")
-		p.pieces[i].start += spanLength
-		p.pieces[i].length -= spanLength
+		fmt.Printf("Delete entirely within this piece #%d\n", i)
+		if totalLength-p.pieces[i].length == position {
+			// span starts at beginning if piece, just adjust start and length
+			fmt.Printf("Delete from beginning of text\n")
+			p.pieces[i].start += spanLength
+			p.pieces[i].length -= spanLength
+		} else if position+spanLength == totalLength {
+			// span ends at end off piece, just adjust length
+			fmt.Printf("Delete from end of text\n")
+			p.pieces[i].length -= spanLength
+		} else {
+			// span is in middle of piece, split the piece 'around' it
+			fmt.Printf("Delete from middle of text\n")
+			origLength := p.pieces[i].length
+			p.pieces[i].length -= totalLength - position // 'truncate' leftmost piece before span
+			rmStart := p.pieces[i].start + p.pieces[i].length + spanLength
+			rmLength := origLength - p.pieces[i].length - spanLength
+			fmt.Printf("Rightmost start is %d, length is %d\n", rmStart, rmLength)
+			p.pieces = insertPiece(p.pieces, piece{p.pieces[i].source, rmStart, rmLength}, i+1) // rightmost section of original piece after the span
+		}
 	} else {
 		fmt.Printf("Delete spans multiple pieces\n")
 		spanRemaining := spanLength - newRemainder
@@ -137,17 +134,18 @@ func (p *PieceTable) Delete(position int, spanLength int) {
 		for spanRemaining > 0 {            // 'delete' the remaining pieces if necessary
 			fmt.Printf("Span remaining: %d\n", spanRemaining)
 			i++
+			fmt.Printf("\tNow scanning pieces- on %d\n", i)
 			if p.pieces[i].length >= spanRemaining {
 				// Last piece for the deleted span, just adjust accordingly
+				fmt.Printf("\tDeleting from piece %d\n", i)
 				p.pieces[i].start += spanRemaining
 				p.pieces[i].length -= spanRemaining
 				spanRemaining = 0
 			} else {
 				spanRemaining -= p.pieces[i].length
-				// Remove this piece
-				copy(p.pieces[i:], p.pieces[i+1:])    // Shift a[i+1:] left one index.
-				p.pieces[len(p.pieces)-1] = piece{}   // Erase last element (write zero value).
-				p.pieces = p.pieces[:len(p.pieces)-1] // Truncate slice.
+				// "Remove" this piece by setting length to 0
+				p.pieces[i].length = 0
+				fmt.Printf("\tRemoving piece at %d\n", i)
 			}
 		}
 	}
@@ -159,8 +157,10 @@ func (p *PieceTable) Text() string {
 	var sb strings.Builder
 	// Walk thru the pieces and reconstruct the string
 	for _, piece := range p.pieces {
-		span := (*piece.source)[piece.start : piece.start+piece.length]
-		sb.WriteString(string(span))
+		if piece.length != 0 {
+			span := (*piece.source)[piece.start : piece.start+piece.length]
+			sb.WriteString(string(span))
+		}
 	}
 	return sb.String()
 }
@@ -170,41 +170,4 @@ func insertPiece(slice []piece, newpiece piece, index int) []piece {
 	copy(s[index+1:], s[index:]) // Shifting elements
 	s[index] = newpiece          // Copying/inserting the value
 	return s
-}
-
-func main() {
-	pt := NewPieceTable("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-	fmt.Println(pt.Text())
-
-	//pt.Dump()
-
-	pt.Insert(0, "FOO")
-	fmt.Println(pt.Text())
-
-	//pt.Dump()
-
-	pt.Insert(16, "BAR")
-	fmt.Println(pt.Text())
-
-	//pt.Dump()
-
-	pt.Insert(9, "HI")
-
-	pt.Dump()
-
-	fmt.Println(pt.Text())
-
-	pt.Delete(15, 5)
-
-	pt.Dump()
-
-	fmt.Println(pt.Text())
-
-	pt.Delete(1, 1)
-
-	pt.Dump()
-
-	fmt.Println(pt.Text())
-
-	//pt.Dump()
 }
