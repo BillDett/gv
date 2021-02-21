@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 )
 
 /*
@@ -38,6 +37,7 @@ func NewPieceTable(orig string) *PieceTable {
 	return &pt
 }
 
+// Dump generates a debug view of the PieceTable for troubleshooting
 func (p *PieceTable) Dump() {
 	fmt.Printf("Original buffer:\n\t(%p), %s\n", &p.original, string(p.original))
 	fmt.Printf("Add buffer:\n\t(%p) %s\nPieces:", &p.add, string(p.add))
@@ -51,11 +51,16 @@ func (p *PieceTable) Dump() {
 
 // Insert puts fragment into the string at given position
 func (p *PieceTable) Insert(position int, fragment string) {
-	// save in the add buffer and create the necessary piece instance
 	fragrunes := []rune(fragment)
+	p.InsertRunes(position, fragrunes)
+}
+
+// InsertRunes puts a slice of runes into the string at given position
+func (p *PieceTable) InsertRunes(position int, runes []rune) {
+	// save in the add buffer and create the necessary piece instance
 	start := len(p.add)
-	length := len(fragrunes)
-	p.add = append(p.add, fragrunes...)
+	length := len(runes)
+	p.add = append(p.add, runes...)
 	newadd := piece{&(p.add), start, length}
 
 	//fmt.Printf("Inserting at position %d\n", position)
@@ -87,6 +92,12 @@ func (p *PieceTable) Insert(position int, fragment string) {
 
 	p.lastpos += length
 
+}
+
+// AppendRune will add a single rune to the end of the PieceTable
+func (p *PieceTable) AppendRune(r rune) {
+
+	p.InsertRunes(p.lastpos, []rune{r})
 }
 
 // Append will add the characters to the end of the PieceTable
@@ -159,15 +170,20 @@ func (p *PieceTable) Delete(position int, spanLength int) {
 
 // Text returns the string being managed by the PieceTable with all edits applied
 func (p *PieceTable) Text() string {
-	var sb strings.Builder
-	// Walk thru the pieces and reconstruct the string
+	runes := p.Runes()
+	return string(*runes)
+}
+
+// Runes returns the runes being managed by the PieceTable with all edits applied
+func (p *PieceTable) Runes() *[]rune {
+	var runes []rune
 	for _, piece := range p.pieces {
 		if piece.length != 0 {
 			span := (*piece.source)[piece.start : piece.start+piece.length]
-			sb.WriteString(string(span))
+			runes = append(runes, span...)
 		}
 	}
-	return sb.String()
+	return &runes
 }
 
 func insertPiece(slice []piece, newpiece piece, index int) []piece {

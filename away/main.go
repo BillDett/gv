@@ -27,7 +27,7 @@ type editor struct {
 	x     int
 	y     int
 	width int
-	buf   [][]rune
+	buf   *PieceTable
 }
 
 var root *headline
@@ -144,23 +144,17 @@ func drawScreen(s tcell.Screen) {
 	s.Show()
 }
 
-/*
 func NewEditor(s tcell.Screen) *editor {
 	if s == nil {
 		return nil
 	}
-	baseLines := 3 // Default # of lines for each editor
 	width, height = s.Size()
-	ew := int(width * 0.7)
-	buf := make([][]rune, baseLines)
-	for i := range buf {
-		buf[i] = make([]rune, ew)
-	}
-	return &editor{5, 5, ew, buf}
+	ew := int(float64(width) * 0.7)
+	return &editor{5, 5, ew, NewPieceTable("")}
 }
-*/
 
-func handleEvents(s tcell.Screen) {
+func handleEvents(s tcell.Screen, ed *editor) {
+	func handleEvents(s tcell.Screen, ed *editor) {
 	for {
 		switch ev := s.PollEvent().(type) {
 		case *tcell.EventResize:
@@ -205,10 +199,10 @@ func main() {
 		Foreground(tcell.ColorGreen)
 	s.SetStyle(defStyle)
 
-	//e := NewEditor(s)
+	ed := NewEditor(s)
 
 	drawScreen(s)
 
-	handleEvents(s)
+	handleEvents(s, ed)
 
 }

@@ -1,13 +1,17 @@
 package main
 
 import (
-	"testing"
-	"fmt"
 	_ "embed"
+	"fmt"
+	"io/ioutil"
+	"testing"
 )
 
 //go:embed gulliver.txt
 var bigtext string
+
+//go:embed asyoulik.txt
+var mediumtext string
 
 func TestPieceTable(t *testing.T) {
 
@@ -95,7 +99,7 @@ func TestPieceTable(t *testing.T) {
 	fmt.Println("Add to Empty PieceTable")
 	pt = NewPieceTable("")
 	answer = "The quick brown fox jumped over the small dog."
-	for i:=0; i<len(answer); i++ {
+	for i := 0; i < len(answer); i++ {
 		pt.Insert(i, string(answer[i]))
 	}
 	result = pt.Text()
@@ -111,23 +115,31 @@ func TestPieceTable(t *testing.T) {
 		t.Errorf("Fail: Create into empty bigtext, wanted >%s< got >%s<\n", answer, result)
 	}
 
-	fmt.Println("Create a large PieceTable by appending pieces of a huge string")
+	fmt.Println("Create a large PieceTable by appending chunks of a huge string")
 	pt = NewPieceTable("")
-	chunk := 200
-	answer = bigtext
+	chunk := 25
+	answer = mediumtext
+	//answer = bigtext
 	//answer = base
-	for i:=0; i<len(answer); i+=chunk {
+	for i := 0; i < len(answer); i += chunk {
 		if i+chunk < len(answer) {
-			pt.Append(answer[i:i+chunk])
+			pt.Append(answer[i : i+chunk])
 		} else {
 			pt.Append(answer[i:])
 		}
 	}
-	pt.Dump()
 	result = pt.Text()
-	// TODO: TEST IS FAILING- WHY?  WRITE OUT THE answer AND result TO FILES SO WE CAN DIFF THEM
 	if result != answer {
-		t.Errorf("Fail: Append to empty bigtext, wanted >%s< got >%s<\n", answer, result)
-	}	
+		err := ioutil.WriteFile("largetext_answer.txt", []byte(answer), 0644)
+		if err != nil {
+			t.Error("Fail: Append test couldn't write to answer file")
+		}
+		err = ioutil.WriteFile("largetext_result.txt", []byte(result), 0644)
+		if err != nil {
+			t.Error("Fail: Append test couldn't write to result file")
+		}
+
+		t.Errorf("Fail: Append to empty bigtext failed, see files.\n")
+	}
 
 }
