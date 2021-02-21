@@ -13,8 +13,8 @@ import (
 var mediumtext string
 
 type editor struct {
-	x          int
-	y          int
+	origX      int         // top left X corner
+	origY      int         // top left y corner
 	width      int         // How many runes wide is the editor
 	height     int         // How many lines high is the editor
 	position   int         // Current rune underneath the cursor
@@ -44,7 +44,7 @@ const lrcorner = '\u2518'
 const hline = '\u2500'
 const vline = '\u2502'
 
-var lorem = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+var lorem = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\nUt enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
 
 func drawBorder(s tcell.Screen, x, y, width, height int) {
 	// Corners
@@ -67,7 +67,7 @@ func drawBorder(s tcell.Screen, x, y, width, height int) {
 // TODO: This is going to need to get much smarter- we need to draw whitespace correctly (TAB, NL, CR) and also we
 //  should only render the text from the editor that fits on the screen's viewport.  Also, it should intelligently
 //  word wrap for us based on whitespace.
-func drawEditorText(s tcell.Screen, ed *editor, width int, height int) {
+func drawEditorText(s tcell.Screen, ed *editor) {
 	// Layout all of the text in the editor (re-create the lineIndex)
 	x := 1
 	y := 1
@@ -78,7 +78,7 @@ func drawEditorText(s tcell.Screen, ed *editor, width int, height int) {
 	ed.lineIndex = append(ed.lineIndex, line{lineStartPos, -1})
 	for pos, r := range *runes {
 		x++
-		if x > width || r == '\n' { // wrap?
+		if x > ed.width || r == '\n' { // wrap?
 			x--
 			ed.lineIndex[lineCount].length = x // Record length of the line we just saw
 			lineStartPos = pos + 1
@@ -96,7 +96,7 @@ func drawEditorText(s tcell.Screen, ed *editor, width int, height int) {
 
 	// Draw the rendered lines that should be visible in window (topline until end of window or text )
 	y = 1
-	for ed.bottomLine = ed.topLine; ed.bottomLine < len(ed.lineIndex) && y < height; ed.bottomLine++ {
+	for ed.bottomLine = ed.topLine; ed.bottomLine < len(ed.lineIndex) && y < ed.height; ed.bottomLine++ {
 		x = 1
 		line := ed.lineIndex[ed.bottomLine]
 		for p := line.position; p < line.position+line.length; p++ {
@@ -111,12 +111,12 @@ func drawEditorText(s tcell.Screen, ed *editor, width int, height int) {
 
 func drawScreen(s tcell.Screen, ed *editor) {
 	width, height := s.Size()
-	editorWidth := int(float64(width) * 0.7)
+	ed.width = int(float64(width) * 0.7)
 	ed.height = height - 2
 	s.Clear()
 	drawBorder(s, 0, 0, width, height)
 	s.ShowCursor(ed.cursX, ed.cursY)
-	drawEditorText(s, ed, editorWidth, height-2)
+	drawEditorText(s, ed)
 	s.Show()
 }
 
@@ -126,7 +126,7 @@ func newEditor(s tcell.Screen) *editor {
 	}
 	width, height := s.Size()
 	ew := int(float64(width) * 0.7)
-	return &editor{0, 0, ew, height - 2, 0, 1, 1, NewPieceTable(""), []line{}, 0, 0, 0, 0}
+	return &editor{1, 1, ew, height - 2, 0, 1, 1, NewPieceTable(""), []line{}, 0, 0, 0, 0}
 }
 
 func (e *editor) dump() {
@@ -137,18 +137,19 @@ func (e *editor) dump() {
 
 func (e *editor) moveRight() {
 	if e.position < e.buf.lastpos {
-		if e.cursX != e.width {
+		// TODO: THIS IS NOT CORRECT
+		if e.cursX < e.width && e.cursX < e.lineIndex[e.linePtr].length-1 {
 			e.cursX++
 		} else { // At end of a line, several things we can do here
 			// Are we at bottom right of window?
 			if e.cursX == e.width && e.cursY == e.height {
 				if e.linePtr < len(e.lineIndex)-1 { // More text to scroll down to
 					e.topLine++
-					e.cursX = 1
+					e.cursX = e.origX
 					e.linePtr++
 				}
 			} else { // just at end of a line, move to next visible one
-				e.cursX = 1
+				e.cursX = e.origX
 				e.cursY++
 				e.linePtr++
 			}
@@ -159,11 +160,11 @@ func (e *editor) moveRight() {
 
 func (e *editor) moveLeft() {
 	if e.position > 0 {
-		if e.cursX != 1 {
+		if e.cursX != e.origX {
 			e.cursX--
 		} else { // At beginning of a line, several things we can do  here
 			// Are we at top left of window?
-			if e.cursX == 1 && e.cursY == 1 {
+			if e.cursX == e.origX && e.cursY == e.origY {
 				if e.linePtr > 0 { // More text to scroll up to
 					e.topLine--
 					e.linePtr--
@@ -181,7 +182,7 @@ func (e *editor) moveLeft() {
 
 func (e *editor) moveUp() {
 	if e.linePtr > 0 {
-		if e.cursY == 1 { // Scroll
+		if e.cursY == e.origY { // Scroll
 			e.topLine--
 		} else if e.cursY > 0 {
 			e.cursY--
@@ -308,8 +309,8 @@ func main() {
 	s.SetStyle(defStyle)
 
 	ed := newEditor(s)
-	//ed.addText(lorem)
-	ed.addText(mediumtext)
+	ed.addText(lorem)
+	//ed.addText(mediumtext)
 
 	drawScreen(s, ed)
 
