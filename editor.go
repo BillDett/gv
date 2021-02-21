@@ -9,7 +9,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-//go:embed intro.txt
+//go:embed gulliver.txt
 var mediumtext string
 
 type editor struct {
@@ -112,10 +112,11 @@ func drawEditorText(s tcell.Screen, ed *editor, width int, height int) {
 func drawScreen(s tcell.Screen, ed *editor) {
 	width, height := s.Size()
 	editorWidth := int(float64(width) * 0.7)
+	ed.height = height - 2
 	s.Clear()
 	drawBorder(s, 0, 0, width, height)
 	s.ShowCursor(ed.cursX, ed.cursY)
-	drawEditorText(s, ed, editorWidth, height-1)
+	drawEditorText(s, ed, editorWidth, height-2)
 	s.Show()
 }
 
@@ -129,8 +130,8 @@ func newEditor(s tcell.Screen) *editor {
 }
 
 func (e *editor) dump() {
-	out := fmt.Sprintf("Width %d, Height %d, curX %d, curY %d\nPosition %d, Topline %d, Bottomline %d, startPos %d, #lines %d, linePtr %d, lineIndex %v\n",
-		e.width, e.height, e.cursX, e.cursY, e.position, e.topLine, e.bottomLine, e.startPos, len(e.lineIndex), e.linePtr, e.lineIndex)
+	out := fmt.Sprintf("Width %d, Height %d, curX %d, curY %d\nLastpos %d Position %d, Topline %d, Bottomline %d, startPos %d, #lines %d, linePtr %d, lineIndex %v\n",
+		e.width, e.height, e.cursX, e.cursY, e.buf.lastpos, e.position, e.topLine, e.bottomLine, e.startPos, len(e.lineIndex), e.linePtr, e.lineIndex)
 	ioutil.WriteFile("editordump.txt", []byte(out), 0644)
 }
 
@@ -174,6 +175,7 @@ func (e *editor) moveLeft() {
 				e.cursX = e.lineIndex[e.linePtr].length
 			}
 		}
+		e.position--
 	}
 }
 
@@ -232,11 +234,16 @@ func (e *editor) text() *[]rune {
 	return e.buf.Runes()
 }
 
-// TODO: Backspace is pretty broken
 func (e *editor) backspace() {
 	if e.position > 0 {
 		e.buf.Delete(e.position-1, 1)
 		e.moveLeft()
+	}
+}
+
+func (e *editor) delete() {
+	if e.buf.lastpos > 0 {
+		e.buf.Delete(e.position, 1)
 	}
 }
 
@@ -267,8 +274,14 @@ func handleEvents(s tcell.Screen, ed *editor) {
 			case tcell.KeyBackspace, tcell.KeyBackspace2:
 				ed.backspace()
 				drawScreen(s, ed)
+			case tcell.KeyDelete:
+				ed.delete()
+				drawScreen(s, ed)
 			case tcell.KeyCtrlF: // for debugging
 				ed.dump()
+			case tcell.KeyEnter, tcell.KeyTab:
+				// TODO: Handle this whitespace
+				drawScreen(s, ed)
 			case tcell.KeyRune:
 				ed.insertRuneAtCurrentPosition(ev.Rune())
 				drawScreen(s, ed)
