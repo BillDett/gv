@@ -96,7 +96,6 @@ func (p *PieceTable) InsertRunes(position int, runes []rune) {
 
 // AppendRune will add a single rune to the end of the PieceTable
 func (p *PieceTable) AppendRune(r rune) {
-
 	p.InsertRunes(p.lastpos, []rune{r})
 }
 

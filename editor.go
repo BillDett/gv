@@ -78,6 +78,7 @@ func drawEditorText(s tcell.Screen, ed *editor) {
 	ed.lineIndex = append(ed.lineIndex, line{lineStartPos, -1})
 	for pos, r := range *runes {
 		x++
+		// TODO: NOT SURE THIS IS RENDERING NEWLINES CORRECTLY
 		if x > ed.width || r == '\n' { // wrap?
 			x--
 			ed.lineIndex[lineCount].length = x // Record length of the line we just saw
@@ -107,6 +108,19 @@ func drawEditorText(s tcell.Screen, ed *editor) {
 		}
 		y++
 	}
+
+	/*
+		Resizing the window means cursor no longer in sync with e.position.  We need to 'find' where on the
+		window e.position resides and set the cursor there.  This is an approach- but is messy since moveRight()
+		is also being called when we insert text.   Need to cleanly split out the layout/cursor position calcs
+		from the functions that use them to insert/navigate/place the cursor
+		// Place the cursor on current position
+		for p := 0; p != ed.position; p++ {
+			ed.moveRight(false)
+		}
+	*/
+	s.ShowCursor(ed.cursX, ed.cursY)
+
 }
 
 func drawScreen(s tcell.Screen, ed *editor) {
@@ -115,7 +129,7 @@ func drawScreen(s tcell.Screen, ed *editor) {
 	ed.height = height - 2
 	s.Clear()
 	drawBorder(s, 0, 0, width, height)
-	s.ShowCursor(ed.cursX, ed.cursY)
+	//s.ShowCursor(ed.cursX, ed.cursY)
 	drawEditorText(s, ed)
 	s.Show()
 }
@@ -135,26 +149,34 @@ func (e *editor) dump() {
 	ioutil.WriteFile("editordump.txt", []byte(out), 0644)
 }
 
-func (e *editor) moveRight() {
+func (e *editor) moveRight(updatePosition bool) {
 	if e.position < e.buf.lastpos {
-		// TODO: THIS IS NOT CORRECT
-		if e.cursX < e.width && e.cursX < e.lineIndex[e.linePtr].length-1 {
+		if e.cursX < e.width && e.cursX < e.lineIndex[e.linePtr].length {
 			e.cursX++
 		} else { // At end of a line, several things we can do here
 			// Are we at bottom right of window?
-			if e.cursX == e.width && e.cursY == e.height {
-				if e.linePtr < len(e.lineIndex)-1 { // More text to scroll down to
+			if e.cursX == e.width {
+				if e.cursY == e.height && e.linePtr < len(e.lineIndex)-1 { // More text to scroll down to
 					e.topLine++
+				} else {
+					e.cursY++
+				}
+				e.cursX = e.origX
+				e.linePtr++
+			} else { // just at end of a line.  You might need to go to next line or be at end of text
+				if e.position == e.buf.lastpos-1 { // end of text
+					e.cursX++
+					// TODO: Slight edge case here where e.cursX == e.width, so e.cursX++ is wrong, we should not increment it.
+				} else { // end of a line with more to follow
 					e.cursX = e.origX
+					e.cursY++
 					e.linePtr++
 				}
-			} else { // just at end of a line, move to next visible one
-				e.cursX = e.origX
-				e.cursY++
-				e.linePtr++
 			}
 		}
-		e.position++
+		if updatePosition { // We use this logic for both arrow key navigation as well as inserting text
+			e.position++
+		}
 	}
 }
 
@@ -224,7 +246,23 @@ func (e *editor) insertRuneAtCurrentPosition(r rune) {
 
 func (e *editor) insertRune(pos int, r rune) {
 	e.buf.InsertRunes(pos, []rune{r})
-	e.moveRight()
+	e.position++
+	if e.position == e.buf.lastpos {
+		// We are appending to end of the text
+		if e.cursX < e.width {
+			e.cursX++ // append on remaining line
+		} else {
+			if e.cursY != e.height { // Extra blank lines left in window
+				e.cursY++
+			} else {
+				e.topLine++ // Shift up a line to make room
+			}
+			e.linePtr++
+			e.cursX = e.origX
+		}
+	} else {
+		e.moveRight(false)
+	}
 }
 
 func (e *editor) addText(s string) {
@@ -244,7 +282,9 @@ func (e *editor) backspace() {
 
 func (e *editor) delete() {
 	if e.buf.lastpos > 0 {
-		e.buf.Delete(e.position, 1)
+		if e.position < e.buf.lastpos {
+			e.buf.Delete(e.position, 1)
+		}
 	}
 }
 
@@ -267,7 +307,7 @@ func handleEvents(s tcell.Screen, ed *editor) {
 				ed.moveUp()
 				drawScreen(s, ed) // TODO: only if we have scrolled
 			case tcell.KeyRight:
-				ed.moveRight()
+				ed.moveRight(true)
 				drawScreen(s, ed) // TODO: only if we have scrolled
 			case tcell.KeyLeft:
 				ed.moveLeft()
@@ -309,8 +349,9 @@ func main() {
 	s.SetStyle(defStyle)
 
 	ed := newEditor(s)
+	//ed.addText("hello")
 	ed.addText(lorem)
-	//ed.addText(mediumtext)
+	ed.addText(mediumtext)
 
 	drawScreen(s, ed)
 
