@@ -17,7 +17,7 @@ type editor struct {
 	origY      int         // top left y corner
 	width      int         // How many runes wide is the editor
 	height     int         // How many lines high is the editor
-	position   int         // Current rune underneath the cursor
+	position   int         // Position of current rune in edited text underneath the cursor
 	cursX      int         // X coordinate of the cursor
 	cursY      int         // Y coordinate of the cursor
 	buf        *PieceTable // Text being edited
@@ -78,7 +78,7 @@ func drawEditorText(s tcell.Screen, ed *editor) {
 	ed.lineIndex = append(ed.lineIndex, line{lineStartPos, -1})
 	for pos, r := range *runes {
 		x++
-		// TODO: NOT SURE THIS IS RENDERING NEWLINES CORRECTLY
+		// TODO: THIS IS NOT RENDERING NEWLINES CORRECTLY
 		if x > ed.width || r == '\n' { // wrap?
 			x--
 			ed.lineIndex[lineCount].length = x // Record length of the line we just saw
@@ -144,11 +144,15 @@ func newEditor(s tcell.Screen) *editor {
 }
 
 func (e *editor) dump() {
-	out := fmt.Sprintf("Width %d, Height %d, curX %d, curY %d\nLastpos %d Position %d, Topline %d, Bottomline %d, startPos %d, #lines %d, linePtr %d, lineIndex %v\n",
-		e.width, e.height, e.cursX, e.cursY, e.buf.lastpos, e.position, e.topLine, e.bottomLine, e.startPos, len(e.lineIndex), e.linePtr, e.lineIndex)
+	runes := *(e.text())
+	out := fmt.Sprintf("Width %d, Height %d, curX %d, curY %d  current rune: (%#U)\nLastpos %d Position %d, Topline %d, Bottomline %d, startPos %d, #lines %d, linePtr %d\nlineIndex %v\n",
+		e.width, e.height, e.cursX, e.cursY, runes[e.position], e.buf.lastpos, e.position, e.topLine, e.bottomLine, e.startPos, len(e.lineIndex), e.linePtr, e.lineIndex)
 	ioutil.WriteFile("editordump.txt", []byte(out), 0644)
 }
 
+// TODO: This logic is pretty messy- can we simplify this at all?
+//        It would help if we separated out the logic for advancing e.position from e.cursX
+//        since they are not always following the same logic.
 func (e *editor) moveRight(updatePosition bool) {
 	if e.position < e.buf.lastpos {
 		if e.cursX < e.width && e.cursX < e.lineIndex[e.linePtr].length {
@@ -168,9 +172,13 @@ func (e *editor) moveRight(updatePosition bool) {
 					e.cursX++
 					// TODO: Slight edge case here where e.cursX == e.width, so e.cursX++ is wrong, we should not increment it.
 				} else { // end of a line with more to follow
-					e.cursX = e.origX
-					e.cursY++
-					e.linePtr++
+					if updatePosition { // only move to next line if we are navigating, not inserting text
+						e.cursX = e.origX
+						e.cursY++
+						e.linePtr++
+					} else {
+						e.cursX++
+					}
 				}
 			}
 		}
@@ -320,8 +328,9 @@ func handleEvents(s tcell.Screen, ed *editor) {
 				drawScreen(s, ed)
 			case tcell.KeyCtrlF: // for debugging
 				ed.dump()
-			case tcell.KeyEnter, tcell.KeyTab:
-				// TODO: Handle this whitespace
+			case tcell.KeyEnter:
+				// TODO: This isn't working great...need better solution here
+				ed.insertRuneAtCurrentPosition('\n')
 				drawScreen(s, ed)
 			case tcell.KeyRune:
 				ed.insertRuneAtCurrentPosition(ev.Rune())
@@ -351,7 +360,7 @@ func main() {
 	ed := newEditor(s)
 	//ed.addText("hello")
 	ed.addText(lorem)
-	ed.addText(mediumtext)
+	//ed.addText(mediumtext)
 
 	drawScreen(s, ed)
 
