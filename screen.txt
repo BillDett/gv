@@ -1,67 +1,132 @@
 +------------------------------------------------------------------------------+
-|+   1. What is GrandView?                                                     |
-|-      a. In a single-pane outliner, all the components of your outline and   | 
+|V   *  What is GrandView?                                                     |
+|       * In a single-pane outliner, all the components of your outline and   | 
 |          its accompanying information are visible in one window.             |
-|-      b. Project and task manager                                            |
-|-      c. Information manager                                                 |
-|+   2. What makes GrandView so unique even today?  How is it possible that    |
+|       * Project and task manager                                            |
+|       * Information manager                                                 |
+|V   *  What makes GrandView so unique even today?  How is it possible that    |
 |       such a product like this could exist?                                  |
-|+      a. Multiple Views                                                      |
-|-         i. Outline View                                                     |
-|-        ii. You can associate any headline (node) with a document. Document  |
+|V       * Multiple Views                                                      |
+|          * Outline View                                                     |
+|          * You can associate any headline (node) with a document. Document  |
 |             view is essentially a hoist that removes all the other elements  |
 |             of your outline from the screen so you can focus on writing the  |
 |             one document. When you are done writing this document (or        |
 |             section of your outline), you can return to outline view, where  |
 |             your document text...                                            |
-|-       iii. Category & Calendar Views                                        |
-|+      b. Fully customizable meta-data                                        |
-|-         i. Apply meta-data to each node of the outline (this information is |
+|          * Category & Calendar Views                                        |
+|>      * Fully customizable meta-data                                        |
+|          * Apply meta-data to each node of the outline (this information is |
 +------------------------------------------------------------------------------+
 |    Status Message and/or input field: __________________________________     |
 
 
 First character of each row:
-    '+'  denotes a headline with children
-    '-'  denotes a headling without children
-    ' '  denotes a multi-line headline
+    '>' (U+25B6) or (U+25B8) denotes a headline with children (collapsed)
+    'V' (U+25BC) or (U+25BE) denotes a headling with children (expanded)
 
-Outline Numbering (decimal [1..999], letter [a..zz (325)], roman [i..xvi (16)]) repeating...
-Outline Bullets (*, etc..)
+Outline Bullets:
+Bullet (U+2022)
+    Open Bullet (U+25CB)
+        Triangle Bullet (U+2023)
+            Hyphen Bullet (U+2043)
 
 Headlines that span past the right most border word wrap onto subsequent lines, indented accordingly.  They word wrap
-against the right most margin.  Headlines can be any length.
+against the right most margin.  Headlines can be any length, but terminate with a LF.
 
 Notes on how to navigate:
     Using the arrow keys, we want to make sure that moving up and down we are able to edit directly wherever the cursor
-lands while preserving the outline/document structure.  So the following rules can be applied whenever we move
-up or down:
+lands while preserving the outline/document structure.  Basically the rules are that *within* a headline, the cursor
+moves freely around the text.  *Across* headlines, the cursor moves across the tree structure, always "landing" on
+the first or last character of a headline.
+
+So the following rules can be applied whenever we move the cursor:
     * Down:
-        * If on a headline, and length > width of screen, then calculate which character to land on directly below
-            where we are (or end of headline).  If no line below, then move to next sibling headline.  if no sibling
-            headline, go to parent and go its next sibling.  If parent has no siblings, recursively repeat for next
-            parent, etc..
-        * If on a headline, and length <= width of screen, then move to first child.  if no children, move to next
-            headline.  If no next headline, do nothing.
+        * Within a multi-line headline, navigate to the next line and place cursor directly beneath or at end of the
+        headline text.  If at bottom of window, scroll everything up 1 line.
+        * If on single line headline (or on last line of multi-line headline), move to the next sibling headling,
+        placing cursor on first character.  If no next sibling, find parent and look for its next sibling.  Repeat
+        until you have found a headline or parent is empty.
     * Up:
-        * If on a headline, and length > width of screen, then calculate which character to land on directly above
-          where we are.  If no line above, go to previous sibling.  If no previous sibling go to parent.  If no
-          parent, do nothing.
-        * If on a headline, and length <= width of screen, then move to previous sibling.  If no previous sibling,
-          go to parent.  If no parent, do nothing.
+        * Within a multi-line headline, navigate to the previous line and place cursor directly above current position.
+        If on top line of window, scroll everything up 1 line.
+        * If on a single line headline or on first line of multi-line headline, move to first char of previous sibling.
+        If no previous sibling, move to first character of parent headline.  If parent is empty, do nothing.
+    * Right:
+        * Within a headline, move forward on same line.  If at right margin and not at end of headline, wrap around to
+        the next line.  If at end of headline go to first character of next sibling.  If no sibling, go to next sibling
+        of parent.  If no next sibling of parent, do nothing (on last leaf headline)
+    * Left:
+        * Within a headline, move backwards on same line.  If at left margin and not at start of headline, wreap 
+        backwards to last character of previous line.  If at first character of headline, move to last character of
+        previous sibling.  If no previous sibling, move to last character of parent's previous sibling.  If no parent's
+        previous sibling, do nothing (at first top level headline)
 
--> IDEA- no such thing as documents.  All headlines can be as big as you want.  That's MUCH simpler- all editing can be
-    done in-place then.
+Additional commands:
+    * PgUp/PgDown:
+        * Skip forward/back as many lines as the window height.
+    * Home:
+        * Move to the first character of the headline.
+    * End:
+        * Move to just past the last character of the headline.
+    * CTRL-Down Arrow:
+        * Move cursor to first character of Next sibling headline.  If no next sibling, find parent and look for its
+        next sibling.  Repeat until you have found a headline or parent is empty.
+    * CTRL-Up Arrow:
+        * Move cursor to first character of Previous sibling headline.  If no previous sibliing move to first
+        character of parent.  If no parent, do nothing.
+    * CTRL--:
+        * Collapse all children of the current headline.
+    * CTRL-+:
+        * Expand all children of the current headline.
+    * CTRL-N:
+        * Create new outline (prompt to save current one if necessary)
+    * CTRL-O:
+        * Open an outline file
+    * CTRL-S:
+        * Save current outline file (assign name if necessary)
 
--> Need a little "micro-editor" that works on a single slice of runes- not intended for huge documents.
-    Assume it works on a fixed width, but arbitrary length window.
-    Should word wrap like shown above.  Use for editing headlines in-place.
+Notes on Text Input/Outline managment:
+    Unlike a general purpose text editor, this is an outliner.  Therefore the text editing is confined within headlines. Within 
+    a headline, the text is entirely free form and may wrap around multiple lines within the editor.  You cannot edit the actual
+    formatting of the outline itself directly (e.g. bullet points, indent stops)- only the text within each headline.
 
-Editor width set to a percentage of overall window size (e.g. 70%).  This allows us to scroll right w/out dealing with expanding editor
-widths as well.
+    The 'last character' of the headline is actually one space following the final rune in the headline itself.  This is because we
+    always append text to the headline (or push to right when inserting).  You can always add more text to the end of a headline.
+    
+    Enter key operates differently depending on when it is pressed.  If you are creating a new headline, this 'finishes' the
+    editing session and creates the headline into the outline itself.  If you are editing an existing headline, this 'splits' the 
+    headline into two, creating a sibling headline with all of the text to the right of the cursor from the original headline.
+    Hitting Enter as the last character of an existing headline should do nothing (no split).
 
-Render the text to the editor window and wrap on word/punctuation boundaries.
+    Ctrl-Enter inserts a 'soft' newline into the headline text- this is just a formatting mark and does not 'finish' or 'split' a 
+    headline.
 
-When editing text- keep the text in a 2-D slice the same size as the editor width but with variable height.
-Edit *directly* in the slice, doing a new layout (new slice) for each update.  Arrow movements correspond directly then with slice indices.
-Then we just write the slice to the screen directly like an image buffer.
+    Tab will start a new child headline under the current one.  If Tab is hit on the first headline, do nothing.
+    If Tab is hit on any other headline, this headline is 'lowered' to be a child of the previous sibling.
+    It is not actually possible to put the Tab character into a headline as text.
+    Shift-Tab 'raises' the headline up a level so that it's now a sibling of its parent.  Shift-Tab on headlines without
+    parents does nothing.
+    
+    Backspace/Delete work on text only within a headline.  Deleting all of the text in a headline deletes the headline.
+    Backspace on first character of a headline 'joins' that headline with its previous sibling (if one exists).  If no
+    siblings exist, do nothing.
+    Delete on last character of a headline 'joins' the next sibling headline with this one.  If no next sibling
+    exists, do nothing.
+    
+    Headlines can be deleted with CTRl-D
+    
+    Headlines may be 'cut' by putting cursor anywhere in the text and hitting CTRL-X.
+    A 'cut' headline can then be 'pasted' as a child of another headline by moving
+    the cursor to that headline and doing CTRL-V.  All of the children of the headline are moved as well.
+    Headlines may be 'copied' with CTRL-C and pasted with CTRL-V; all children of the headline are copied as well.
+    
+    Shift-Arrow keys select text.
+    Selected text adheres to CTRL-C, CTRL-X, CTRL-V conventions *within* a headline.
+    Delete will remove all selected text instead of the current cursor position.
+
+Resizing the terminal window performs a re-layout of the outline.  If the current line is outside the window's 
+lower edge after a resize event, we should ensure that the current line remains the last line in the window at all times.
+
+Cursor position must stay in same place even when screen is resized (e.g. we should calculate the cursor position 
+based upon the actual position within the text buffer after each event rather than store independently)

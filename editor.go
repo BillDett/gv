@@ -69,8 +69,8 @@ func drawBorder(s tcell.Screen, x, y, width, height int) {
 //  word wrap for us based on whitespace.
 func drawEditorText(s tcell.Screen, ed *editor) {
 	// Layout all of the text in the editor (re-create the lineIndex)
-	x := 1
-	y := 1
+	x := ed.origX
+	y := ed.origY
 	runes := ed.text()
 	lineStartPos := 0
 	lineCount := 0
@@ -96,9 +96,9 @@ func drawEditorText(s tcell.Screen, ed *editor) {
 	}
 
 	// Draw the rendered lines that should be visible in window (topline until end of window or text )
-	y = 1
+	y = ed.origY
 	for ed.bottomLine = ed.topLine; ed.bottomLine < len(ed.lineIndex) && y < ed.height; ed.bottomLine++ {
-		x = 1
+		x = ed.origX
 		line := ed.lineIndex[ed.bottomLine]
 		for p := line.position; p < line.position+line.length; p++ {
 			if line.length != -1 {
@@ -140,7 +140,9 @@ func newEditor(s tcell.Screen) *editor {
 	}
 	width, height := s.Size()
 	ew := int(float64(width) * 0.7)
-	return &editor{1, 1, ew, height - 2, 0, 1, 1, NewPieceTable(""), []line{}, 0, 0, 0, 0}
+	x := 5
+	y := 3
+	return &editor{x, y, ew, height - 2, 0, x, y, NewPieceTable(""), []line{}, 0, 0, 0, 0}
 }
 
 func (e *editor) dump() {
@@ -153,13 +155,15 @@ func (e *editor) dump() {
 // TODO: This logic is pretty messy- can we simplify this at all?
 //        It would help if we separated out the logic for advancing e.position from e.cursX
 //        since they are not always following the same logic.
+//   NEED TO BE ABLE TO CONVERT FROM WINDOW COORDS TO INTERNAL EDITOR COORDS
 func (e *editor) moveRight(updatePosition bool) {
+	rightmargin := e.width + e.origX
 	if e.position < e.buf.lastpos {
-		if e.cursX < e.width && e.cursX < e.lineIndex[e.linePtr].length {
+		if e.cursX < rightmargin && e.cursX < e.lineIndex[e.linePtr].length {
 			e.cursX++
 		} else { // At end of a line, several things we can do here
 			// Are we at bottom right of window?
-			if e.cursX == e.width {
+			if e.cursX == rightmargin {
 				if e.cursY == e.height && e.linePtr < len(e.lineIndex)-1 { // More text to scroll down to
 					e.topLine++
 				} else {
