@@ -90,20 +90,44 @@ func drawBorder(s tcell.Screen, x, y, width, height int) {
 	}
 }
 
+func indentCode(level int) string {
+	return fmt.Sprintf("%c%d%c", nodeDelim, level, nodeDelim)
+}
+
 func newOutline(s tcell.Screen) *outline {
-	eofDelim := fmt.Sprintf("%c%c", nodeDelim, eof)
-	o := &outline{*NewPieceTable(eofDelim), nil, 0, 0, 3, 0, 0}
-	o.addHeadline("", 0)
+	o := &outline{*NewPieceTable(""), nil, 0, 0, 3, 0, 0}
 	o.setScreenSize(s)
 	return o
 }
 
+// initialize a new outline to be used as a blank outline for editing
+func (o *outline) init() {
+	eofDelim := []rune{nodeDelim, eof}
+	o.buf.InsertRunes(0, eofDelim)
+	o.addHeadline("", 0)
+}
+
 func (o *outline) dump() {
 	text := o.buf.Runes()
-	out := fmt.Sprintf("lastPos %d\tcurrentPosition %d (%#U)\tlinePtr %d\nlineIndex %v\nlineIndex.position %d\tlineIndex.length %v\tdbg %d\tdbg2 %d\n",
+	out := fmt.Sprintf("lastPos %d\tcurrentPosition %d (%#U)\tlinePtr %d\nlineIndex %v\nlineIndex.position %d\tlineIndex.length %v\tdbg %d\tdbg2 %d\nFirst rune (%#U)",
 		o.buf.lastpos, o.currentPosition, (*text)[o.currentPosition], o.linePtr, o.lineIndex,
-		o.lineIndex[o.linePtr].position, o.lineIndex[o.linePtr].length, dbg, dbg2)
+		o.lineIndex[o.linePtr].position, o.lineIndex[o.linePtr].length, dbg, dbg2, (*text)[0])
 	ioutil.WriteFile("dump.txt", []byte(out), 0644)
+}
+
+// save the outline buffer to a file
+func (o *outline) save(filename string) {
+	ioutil.WriteFile(filename, []byte(o.buf.Text()), 0644)
+}
+
+// load a .gv file and use it to populate the outline's buffer
+func (o *outline) load(filename string) {
+	buf, err := ioutil.ReadFile(filename)
+	if err != nil {
+		fmt.Printf("Unable to read file %s\n", filename)
+		os.Exit(1)
+	}
+	o.buf.InsertRunes(0, []rune(string(buf)))
 }
 
 func (o *outline) setScreenSize(s tcell.Screen) {
@@ -112,7 +136,7 @@ func (o *outline) setScreenSize(s tcell.Screen) {
 	o.editorWidth = int(float64(width) * 0.7)
 }
 
-// appends a new headline onto the outline (before the <EOFDelim>)
+// appends a new headline onto the outline (before the final <EOFDelim>)
 func (o *outline) addHeadline(text string, level int) {
 	o.buf.Insert(o.buf.lastpos-2, indentCode(level)+text)
 }
@@ -265,10 +289,6 @@ func writeString(s tcell.Screen, o *outline, text *[]rune, start int, end int, i
 		x++
 	}
 	return updatedCursor
-}
-
-func indentCode(level int) string {
-	return fmt.Sprintf("%c%d%c", nodeDelim, level, nodeDelim)
 }
 
 func genTestOutline(s tcell.Screen) *outline {
@@ -448,8 +468,6 @@ func handleEvents(s tcell.Screen, o *outline) {
 			case tcell.KeyDelete:
 				o.delete()
 				drawScreen(s, o)
-			case tcell.KeyCtrlF: // for debugging
-				o.dump()
 			case tcell.KeyEnter:
 				o.enterPressed()
 				drawScreen(s, o)
@@ -459,6 +477,10 @@ func handleEvents(s tcell.Screen, o *outline) {
 			case tcell.KeyRune:
 				o.insertRuneAtCurrentPosition(ev.Rune())
 				drawScreen(s, o)
+			case tcell.KeyCtrlF: // for debugging
+				o.dump()
+			case tcell.KeyCtrlS:
+				o.save("outline.gv")
 			}
 		}
 	}
@@ -480,9 +502,14 @@ func main() {
 		Background(tcell.ColorBlack).
 		Foreground(tcell.ColorGreen)
 	s.SetStyle(defStyle)
+	//o := genTestOutline(s)
+	o := newOutline(s)
+	if len(os.Args) > 1 {
+		o.load(os.Args[1])
+	} else {
+		o.init()
+	}
 
-	o := genTestOutline(s)
-	//o := newOutline(s)
 	drawScreen(s, o)
 
 	handleEvents(s, o)
