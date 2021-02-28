@@ -93,11 +93,11 @@ func drawBorder(s tcell.Screen, x, y, width, height int) {
 func newOutline(s tcell.Screen) *outline {
 	eofDelim := fmt.Sprintf("%c%c", nodeDelim, eof)
 	o := &outline{*NewPieceTable(eofDelim), nil, 0, 0, 3, 0, 0}
+	o.addHeadline("", 0)
 	o.setScreenSize(s)
 	return o
 }
 
-// WARNING- don't run unless o.currentPosition > 5
 func (o *outline) dump() {
 	text := o.buf.Runes()
 	out := fmt.Sprintf("lastPos %d\tcurrentPosition %d (%#U)\tlinePtr %d\nlineIndex %v\nlineIndex.position %d\tlineIndex.length %v\tdbg %d\tdbg2 %d\n",
@@ -125,6 +125,26 @@ func (o *outline) recordLogicalLine(position int, length int, current bool) {
 	if current {
 		o.linePtr = len(o.lineIndex) - 1
 	}
+}
+
+// Figure out what is level of headline under o.currentPosition
+// Walk backwards from current positon until you find the leading <nodeDelim> and then extract the level
+func (o *outline) currentLevel() int {
+	text := (*o.buf.Runes())
+	var begin, rhs, start int
+	if text[o.currentPosition] == nodeDelim { // "back up" if we're sitting on a trailing <nodeDelim> at end of a line
+		begin = o.currentPosition - 1
+	} else {
+		begin = o.currentPosition
+	}
+	// find right hand nodeDelim
+	for rhs = begin; text[rhs] != nodeDelim; rhs-- {
+	}
+	// extract the level
+	for start = rhs - 1; text[start] != nodeDelim; start-- {
+	}
+	level, _ := strconv.Atoi(string(text[start+1 : rhs]))
+	return level
 }
 
 // Tokenize the text to extract the next Headline, returning level, start position and end position of headline
@@ -385,6 +405,20 @@ func (o *outline) delete() {
 	}
 }
 
+// Enter always creates a new headline at current position at same level as current headline
+func (o *outline) enterPressed() {
+	delim := indentCode(o.currentLevel())
+	o.buf.Insert(o.currentPosition, delim)
+	o.moveRight()
+}
+
+// Tab indents a headline and all subsequent headlines with levels > this level, if not on the first headline
+// TODO: Think we should factor out some more low-level utilities for finding/changing headlines within the
+//   stream to make this easier.
+func (o *outline) tabPressed() {
+
+}
+
 func handleEvents(s tcell.Screen, o *outline) {
 	for {
 		switch ev := s.PollEvent().(type) {
@@ -416,11 +450,12 @@ func handleEvents(s tcell.Screen, o *outline) {
 				drawScreen(s, o)
 			case tcell.KeyCtrlF: // for debugging
 				o.dump()
-				/*
-					case tcell.KeyEnter, tcell.KeyTab:
-						// TODO: Handle this whitespace
-						drawScreen(s, ed)
-				*/
+			case tcell.KeyEnter:
+				o.enterPressed()
+				drawScreen(s, o)
+			case tcell.KeyTab:
+				o.tabPressed()
+				drawScreen(s, o)
 			case tcell.KeyRune:
 				o.insertRuneAtCurrentPosition(ev.Rune())
 				drawScreen(s, o)
@@ -447,7 +482,7 @@ func main() {
 	s.SetStyle(defStyle)
 
 	o := genTestOutline(s)
-	//fmt.Printf("%U\n", o.buf.Runes())
+	//o := newOutline(s)
 	drawScreen(s, o)
 
 	handleEvents(s, o)
