@@ -16,16 +16,22 @@ type outline struct {
 	lineIndex       []line     // Text Position index for each "line" after editor has been laid out.
 	linePtr         int        // index of the line currently beneath the cursor
 	editorWidth     int        // width of an editor column
+	editorHeight    int        // height of the editor window
 	currentPosition int        // the current position within the buf
 	topLine         int        // index of the topmost "line" of the window in lineIndex
-	bottomLine      int        // index of the bottommost "line" of the window in lineIndex
 }
 
-// a line is a logic representation of a line that is rendered in the window
+// a line is a logical representation of a line that is rendered in the window
 type line struct {
-	position int // Text position in editor.text()
-	length   int // How many runes in this "line"
+	bullet        rune // What bullet should precede this line (if any)?
+	indent        int  // Initial indent before a bullet
+	hangingIndent int  // Indent for text without a bullet
+	position      int  // Text position in editor.text()
+	length        int  // How many runes in this "line"
 }
+
+// Render buffer- where we write the outline characters to during layout phase
+var renderBuf [][]rune
 
 /*
  Outline structure takes the following form:
@@ -50,6 +56,8 @@ var cursY int       // Y coordinate of the cursor
 
 var dbg int
 var dbg2 int
+
+var currentFilename string
 
 // Standard line drawing characters
 const tlcorner = '\u250c'
@@ -95,7 +103,7 @@ func indentCode(level int) string {
 }
 
 func newOutline(s tcell.Screen) *outline {
-	o := &outline{*NewPieceTable(""), nil, 0, 0, 3, 0, 0}
+	o := &outline{*NewPieceTable(""), nil, 0, 0, 0, 3, 1}
 	o.setScreenSize(s)
 	return o
 }
@@ -109,9 +117,10 @@ func (o *outline) init() {
 
 func (o *outline) dump() {
 	text := o.buf.Runes()
-	out := fmt.Sprintf("lastPos %d\tcurrentPosition %d (%#U)\tlinePtr %d\nlineIndex %v\nlineIndex.position %d\tlineIndex.length %v\tdbg %d\tdbg2 %d\nFirst rune (%#U)",
+	out := fmt.Sprintf("lastPos %d\tcurrentPosition %d (%#U)\tlinePtr %d\nlineIndex %v\nlineIndex.position %d\tlineIndex.length %v\tdbg %d\tdbg2 %d\nFirst rune (%#U)\ttopLine %d\teditorheight %d\n",
 		o.buf.lastpos, o.currentPosition, (*text)[o.currentPosition], o.linePtr, o.lineIndex,
-		o.lineIndex[o.linePtr].position, o.lineIndex[o.linePtr].length, dbg, dbg2, (*text)[0])
+		o.lineIndex[o.linePtr].position, o.lineIndex[o.linePtr].length, dbg, dbg2, (*text)[0],
+		o.topLine, o.editorHeight)
 	ioutil.WriteFile("dump.txt", []byte(out), 0644)
 }
 
@@ -132,8 +141,9 @@ func (o *outline) load(filename string) {
 
 func (o *outline) setScreenSize(s tcell.Screen) {
 	var width int
-	width, o.bottomLine = s.Size()
+	width, height := s.Size()
 	o.editorWidth = int(float64(width) * 0.7)
+	o.editorHeight = height - 2
 }
 
 // appends a new headline onto the outline (before the final <EOFDelim>)
@@ -144,8 +154,8 @@ func (o *outline) addHeadline(text string, level int) {
 // Store a 'logical' line- this is a rendered line of text on the screen. We use this index
 // to figure out where in the outline buffer to move to when we navigate visually
 // Optionally remember if this is the current line we're sitting on with the cursor
-func (o *outline) recordLogicalLine(position int, length int, current bool) {
-	o.lineIndex = append(o.lineIndex, line{position, length})
+func (o *outline) recordLogicalLine(bullet rune, indent int, hangingIndent int, position int, length int, current bool) {
+	o.lineIndex = append(o.lineIndex, line{bullet, indent, hangingIndent, position, length})
 	if current {
 		o.linePtr = len(o.lineIndex) - 1
 	}
@@ -205,11 +215,11 @@ func (o *outline) nextHeadline(position int) (int, int, int, error) {
 	}
 }
 
-func renderOutline(s tcell.Screen, o *outline, width int, height int) {
+func layoutOutline(s tcell.Screen, o *outline, width int, height int) {
 	y := 1
 	o.linePtr = 0
 	o.lineIndex = []line{}
-	o.lineIndex = append(o.lineIndex, line{0, -1})
+	o.lineIndex = append(o.lineIndex, line{0, 0, 0, 0, -1})
 	text := o.buf.Runes()
 	var level, start, end int
 	var err error
@@ -219,14 +229,23 @@ func renderOutline(s tcell.Screen, o *outline, width int, height int) {
 			fmt.Printf("%v\n", err)
 			break
 		}
-		y = renderHeadline(s, o, text, start, end+1, y, level, false) // we use end+1 so we render the <nodeDelim>- this gives us something at end of headline to start typing on when appending text to headline
+		y = layoutHeadline(s, o, text, start, end+1, y, level, false) // we use end+1 so we render the <nodeDelim>- this gives us something at end of headline to start typing on when appending text to headline
 	}
 }
 
-// Write a headline into the window, format according to indent and word-wrap the text.
-func renderHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int, y int, level int, collapsed bool) int {
+func handleScroll(scroll int, o *outline) {
+	if scroll == 1 {
+		o.topLine++
+	} else if scroll == -1 {
+		o.topLine--
+	}
+}
+
+// Format headline according to indent and word-wrap the text.
+func layoutHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int, y int, level int, collapsed bool) int {
 	o.setScreenSize(s)
 	origX := 1
+	level++
 	var bullet rune
 	endY := y
 	if collapsed {
@@ -236,23 +255,29 @@ func renderHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int
 	}
 	indent := origX + (level * 3)
 	hangingIndent := indent + 3
-	s.SetContent(indent, y, bullet, nil, defStyle)
 	headlineLength := end - start + 1
 	if headlineLength <= o.editorWidth-hangingIndent { // headline fits entirely within a single line
-		cursorOnThisLine := writeString(s, o, text, start, end, hangingIndent, endY)
-		o.recordLogicalLine(start, headlineLength-1, cursorOnThisLine)
+		cursorOnThisLine, scroll := layoutLine(s, o, text, start, end, hangingIndent, endY)
+		o.recordLogicalLine(bullet, indent, hangingIndent, start, headlineLength-1, cursorOnThisLine)
+		handleScroll(scroll, o)
 		endY++
 	} else { // going to have to wrap it
 		pos := start
-		//var fragment string
+		firstLine := true
 		for pos < end {
 			endPos := pos + o.editorWidth
 			if endPos > end { // overshot end of text, we're on the last fragment
-				cursorOnThisLine := writeString(s, o, text, pos, end, hangingIndent, endY)
-				o.recordLogicalLine(pos, end-pos, cursorOnThisLine)
+				cursorOnThisLine, scroll := layoutLine(s, o, text, pos, end, hangingIndent, endY)
+				handleScroll(scroll, o)
+				o.recordLogicalLine(0, indent, hangingIndent, pos, end-pos, cursorOnThisLine)
 				endPos = end
 				endY++
 			} else { // on first or middle fragment
+				var mybullet rune
+				if firstLine { // if we're laying out first line of a multi-line headline, remember that we want to use a bullet
+					mybullet = bullet
+					firstLine = false
+				}
 				if !unicode.IsSpace((*text)[endPos]) {
 					// Walk backwards until you see your first whitespace
 					p := endPos
@@ -263,8 +288,9 @@ func renderHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int
 						endPos = p + 1
 					}
 				}
-				cursorOnThisLine := writeString(s, o, text, pos, endPos, hangingIndent, endY)
-				o.recordLogicalLine(pos, endPos-pos, cursorOnThisLine)
+				cursorOnThisLine, scroll := layoutLine(s, o, text, pos, endPos, hangingIndent, endY)
+				handleScroll(scroll, o)
+				o.recordLogicalLine(mybullet, indent, hangingIndent, pos, endPos-pos, cursorOnThisLine)
 				endY++
 			}
 			pos = endPos
@@ -274,21 +300,49 @@ func renderHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int
 	return endY
 }
 
-// Render each individual character of the outline to the screen.  Watch for the current position and update cursor to match it.
-// Return whether or not we updated the cursor on this line
-func writeString(s tcell.Screen, o *outline, text *[]rune, start int, end int, indent int, y int) bool {
+// Layout each individual character of this logical line.
+// Watch for the current position and update cursor to match it.
+// Return whether or not we updated the cursor on this line, and whether we should scroll or not {0=no, -1=up, 1=down}
+func layoutLine(s tcell.Screen, o *outline, text *[]rune, start int, end int, indent int, y int) (bool, int) {
 	updatedCursor := false
+	//lastLine := o.topLine + o.editorHeight
+	scroll := 0
 	x := 0
 	for c := start; c < end; c++ {
-		s.SetContent(indent+x, y, (*text)[c], nil, defStyle)
 		if o.currentPosition == c { // If we're rendering the current position, place cursor here
 			cursX = indent + x
-			cursY = y
+			// Decide whether we've scrolled up or down based upon previous cursY value
+			if y > cursY && cursY == o.editorHeight {
+				scroll = 1
+			} else if y < cursY && cursY == 1 {
+				scroll = -1
+			} else {
+				cursY = y
+			}
 			updatedCursor = true
 		}
 		x++
 	}
-	return updatedCursor
+	return updatedCursor, scroll
+}
+
+// Walk thru the lineIndex and render each logical line that is within the window's boundaries
+func renderOutline(s tcell.Screen, o *outline) {
+	runes := *(o.buf.Runes())
+	y := 1
+	lastLine := o.topLine + o.editorHeight - 1
+	for l := o.topLine; l <= lastLine && l < len(o.lineIndex); l++ {
+		x := 0
+		line := o.lineIndex[l]
+		if line.length != -1 {
+			s.SetContent(x+line.indent, y, line.bullet, nil, defStyle)
+			for p := line.position; p < line.position+line.length; p++ {
+				s.SetContent(x+line.hangingIndent, y, runes[p], nil, defStyle)
+				x++
+			}
+			y++
+		}
+	}
 }
 
 func genTestOutline(s tcell.Screen) *outline {
@@ -315,7 +369,8 @@ func drawScreen(s tcell.Screen, o *outline) {
 	width, height := s.Size()
 	s.Clear()
 	drawBorder(s, 0, 0, width, height)
-	renderOutline(s, o, width, height)
+	layoutOutline(s, o, width, height)
+	renderOutline(s, o)
 	s.ShowCursor(cursX, cursY)
 	s.Show()
 }
@@ -480,7 +535,11 @@ func handleEvents(s tcell.Screen, o *outline) {
 			case tcell.KeyCtrlF: // for debugging
 				o.dump()
 			case tcell.KeyCtrlS:
-				o.save("outline.gv")
+				if currentFilename == "" {
+					// TODO: Should prompt for a filename
+					currentFilename = "outline.gv"
+				}
+				o.save(currentFilename)
 			}
 		}
 	}
@@ -505,7 +564,8 @@ func main() {
 	//o := genTestOutline(s)
 	o := newOutline(s)
 	if len(os.Args) > 1 {
-		o.load(os.Args[1])
+		currentFilename = os.Args[1]
+		o.load(currentFilename)
 	} else {
 		o.init()
 	}
