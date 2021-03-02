@@ -103,7 +103,7 @@ func indentCode(level int) string {
 }
 
 func newOutline(s tcell.Screen) *outline {
-	o := &outline{*NewPieceTable(""), nil, 0, 0, 0, 3, 1}
+	o := &outline{*NewPieceTable(""), nil, 0, 0, 0, 3, 0}
 	o.setScreenSize(s)
 	return o
 }
@@ -117,9 +117,9 @@ func (o *outline) init() {
 
 func (o *outline) dump() {
 	text := o.buf.Runes()
-	out := fmt.Sprintf("lastPos %d\tcurrentPosition %d (%#U)\tlinePtr %d\nlineIndex %v\nlineIndex.position %d\tlineIndex.length %v\tdbg %d\tdbg2 %d\nFirst rune (%#U)\ttopLine %d\teditorheight %d\n",
+	out := fmt.Sprintf("lastPos %d\tcurrentPosition %d (%#U)\tlinePtr %d\nlineIndex %v\nlineIndex.position %d\tlineIndex.length %v\tdbg %d\tdbg2 %d\n# of lines: %d\ttopLine %d\teditorheight %d\n",
 		o.buf.lastpos, o.currentPosition, (*text)[o.currentPosition], o.linePtr, o.lineIndex,
-		o.lineIndex[o.linePtr].position, o.lineIndex[o.linePtr].length, dbg, dbg2, (*text)[0],
+		o.lineIndex[o.linePtr].position, o.lineIndex[o.linePtr].length, dbg, dbg2, len(o.lineIndex),
 		o.topLine, o.editorHeight)
 	ioutil.WriteFile("dump.txt", []byte(out), 0644)
 }
@@ -153,12 +153,8 @@ func (o *outline) addHeadline(text string, level int) {
 
 // Store a 'logical' line- this is a rendered line of text on the screen. We use this index
 // to figure out where in the outline buffer to move to when we navigate visually
-// Optionally remember if this is the current line we're sitting on with the cursor
-func (o *outline) recordLogicalLine(bullet rune, indent int, hangingIndent int, position int, length int, current bool) {
+func (o *outline) recordLogicalLine(bullet rune, indent int, hangingIndent int, position int, length int) {
 	o.lineIndex = append(o.lineIndex, line{bullet, indent, hangingIndent, position, length})
-	if current {
-		o.linePtr = len(o.lineIndex) - 1
-	}
 }
 
 // Figure out what is level of headline under o.currentPosition
@@ -217,9 +213,7 @@ func (o *outline) nextHeadline(position int) (int, int, int, error) {
 
 func layoutOutline(s tcell.Screen, o *outline, width int, height int) {
 	y := 1
-	o.linePtr = 0
 	o.lineIndex = []line{}
-	o.lineIndex = append(o.lineIndex, line{0, 0, 0, 0, -1})
 	text := o.buf.Runes()
 	var level, start, end int
 	var err error
@@ -233,17 +227,8 @@ func layoutOutline(s tcell.Screen, o *outline, width int, height int) {
 	}
 }
 
-func handleScroll(scroll int, o *outline) {
-	if scroll == 1 {
-		o.topLine++
-	} else if scroll == -1 {
-		o.topLine--
-	}
-}
-
 // Format headline according to indent and word-wrap the text.
 func layoutHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int, y int, level int, collapsed bool) int {
-	o.setScreenSize(s)
 	origX := 1
 	level++
 	var bullet rune
@@ -257,9 +242,7 @@ func layoutHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int
 	hangingIndent := indent + 3
 	headlineLength := end - start + 1
 	if headlineLength <= o.editorWidth-hangingIndent { // headline fits entirely within a single line
-		cursorOnThisLine, scroll := layoutLine(s, o, text, start, end, hangingIndent, endY)
-		o.recordLogicalLine(bullet, indent, hangingIndent, start, headlineLength-1, cursorOnThisLine)
-		handleScroll(scroll, o)
+		o.recordLogicalLine(bullet, indent, hangingIndent, start, headlineLength-1)
 		endY++
 	} else { // going to have to wrap it
 		pos := start
@@ -267,9 +250,7 @@ func layoutHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int
 		for pos < end {
 			endPos := pos + o.editorWidth
 			if endPos > end { // overshot end of text, we're on the last fragment
-				cursorOnThisLine, scroll := layoutLine(s, o, text, pos, end, hangingIndent, endY)
-				handleScroll(scroll, o)
-				o.recordLogicalLine(0, indent, hangingIndent, pos, end-pos, cursorOnThisLine)
+				o.recordLogicalLine(0, indent, hangingIndent, pos, end-pos)
 				endPos = end
 				endY++
 			} else { // on first or middle fragment
@@ -288,9 +269,7 @@ func layoutHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int
 						endPos = p + 1
 					}
 				}
-				cursorOnThisLine, scroll := layoutLine(s, o, text, pos, endPos, hangingIndent, endY)
-				handleScroll(scroll, o)
-				o.recordLogicalLine(mybullet, indent, hangingIndent, pos, endPos-pos, cursorOnThisLine)
+				o.recordLogicalLine(mybullet, indent, hangingIndent, pos, endPos-pos)
 				endY++
 			}
 			pos = endPos
@@ -298,32 +277,6 @@ func layoutHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int
 	}
 
 	return endY
-}
-
-// Layout each individual character of this logical line.
-// Watch for the current position and update cursor to match it.
-// Return whether or not we updated the cursor on this line, and whether we should scroll or not {0=no, -1=up, 1=down}
-func layoutLine(s tcell.Screen, o *outline, text *[]rune, start int, end int, indent int, y int) (bool, int) {
-	updatedCursor := false
-	//lastLine := o.topLine + o.editorHeight
-	scroll := 0
-	x := 0
-	for c := start; c < end; c++ {
-		if o.currentPosition == c { // If we're rendering the current position, place cursor here
-			cursX = indent + x
-			// Decide whether we've scrolled up or down based upon previous cursY value
-			if y > cursY && cursY == o.editorHeight {
-				scroll = 1
-			} else if y < cursY && cursY == 1 {
-				scroll = -1
-			} else {
-				cursY = y
-			}
-			updatedCursor = true
-		}
-		x++
-	}
-	return updatedCursor, scroll
 }
 
 // Walk thru the lineIndex and render each logical line that is within the window's boundaries
@@ -334,14 +287,18 @@ func renderOutline(s tcell.Screen, o *outline) {
 	for l := o.topLine; l <= lastLine && l < len(o.lineIndex); l++ {
 		x := 0
 		line := o.lineIndex[l]
-		if line.length != -1 {
-			s.SetContent(x+line.indent, y, line.bullet, nil, defStyle)
-			for p := line.position; p < line.position+line.length; p++ {
-				s.SetContent(x+line.hangingIndent, y, runes[p], nil, defStyle)
-				x++
+		s.SetContent(x+line.indent, y, line.bullet, nil, defStyle)
+		for p := line.position; p < line.position+line.length; p++ {
+			// If we're rendering the current position, place cursor here, remember this is current logical line
+			if o.currentPosition == p {
+				cursX = line.hangingIndent + x
+				cursY = y
+				o.linePtr = l
 			}
-			y++
+			s.SetContent(x+line.hangingIndent, y, runes[p], nil, defStyle)
+			x++
 		}
+		y++
 	}
 }
 
@@ -375,7 +332,6 @@ func drawScreen(s tcell.Screen, o *outline) {
 	s.Show()
 }
 
-// TODO: We can probably simplify this a lot w/out using o.buf.Runes and o.nextHeadline
 func (o *outline) moveRight() {
 	if o.currentPosition < o.buf.lastpos-1 {
 		text := *(o.buf.Runes())
@@ -384,11 +340,19 @@ func (o *outline) moveRight() {
 			if text[peek] != eof {
 				// at last character of current headline, move to beginning of next headline
 				_, o.currentPosition, _, _ = o.nextHeadline(o.currentPosition)
-				return
 			}
 		} else {
 			// Just move to next character in this headline
 			o.currentPosition++
+		}
+		// Scroll?
+		//   see if we've moved into next logical line
+		newPtr := o.linePtr + 1
+		if newPtr < len(o.lineIndex) {
+			if o.currentPosition >= o.lineIndex[newPtr].position && o.linePtr-o.topLine+1 >= o.editorHeight {
+				// If we've 'moved' to next logical line and at bottom row of window
+				o.topLine++
+			}
 		}
 	}
 }
@@ -407,20 +371,37 @@ func (o *outline) moveLeft() {
 		} else { // Just move to previous character in this headline
 			o.currentPosition--
 		}
+		// Scroll?
+		//   see if we've moved into previous logical line
+		newPtr := o.linePtr - 1
+		if newPtr >= 0 {
+			previousLastPosition := o.lineIndex[newPtr].position + o.lineIndex[newPtr].length - 1
+			if o.currentPosition <= previousLastPosition && o.linePtr-o.topLine+1 == 1 {
+				// If we've 'moved' to previous logical line and at top row of window
+				o.topLine--
+			}
+		}
+
 	}
 }
 
 func (o *outline) moveDown() {
 	if o.currentPosition < o.buf.lastpos-1 {
-		offset := o.currentPosition - o.lineIndex[o.linePtr].position // how far 'in' are we on the logical line?
-		dbg = offset
-		newLinePtr := o.linePtr + 1
-		if newLinePtr < len(o.lineIndex) { // There are more lines below us
-			dbg2 = o.lineIndex[newLinePtr].length
-			if offset >= o.lineIndex[newLinePtr].length { // Are we moving down to a smaller line with x too far right?
-				o.currentPosition = o.lineIndex[newLinePtr].position + o.lineIndex[newLinePtr].length - 1
-			} else {
-				o.currentPosition = offset + o.lineIndex[newLinePtr].position
+		if o.linePtr != len(o.lineIndex)-1 { // Make sure we're not on last line
+			offset := o.currentPosition - o.lineIndex[o.linePtr].position // how far 'in' are we on the logical line?
+			dbg = offset
+			newLinePtr := o.linePtr + 1
+			if newLinePtr < len(o.lineIndex) { // There are more lines below us
+				dbg2 = o.lineIndex[newLinePtr].length
+				if offset >= o.lineIndex[newLinePtr].length { // Are we moving down to a smaller line with x too far right?
+					o.currentPosition = o.lineIndex[newLinePtr].position + o.lineIndex[newLinePtr].length - 1
+				} else {
+					o.currentPosition = offset + o.lineIndex[newLinePtr].position
+				}
+			}
+			// Scroll?
+			if o.linePtr-o.topLine+1 >= o.editorHeight {
+				o.topLine++
 			}
 		}
 	}
@@ -430,13 +411,17 @@ func (o *outline) moveUp() {
 	if o.currentPosition > 3 { // Do nothing if on first character of first headline
 		offset := o.currentPosition - o.lineIndex[o.linePtr].position // how far 'in' are we on the logical line?
 		newLinePtr := o.linePtr - 1
-		if newLinePtr > 0 { // There are more lines above
+		if newLinePtr >= 0 { // There are more lines above
 			dbg2 = o.lineIndex[newLinePtr].length
 			if offset >= o.lineIndex[newLinePtr].length { // Are we moving up to a smaller line with x too far right?
 				o.currentPosition = o.lineIndex[newLinePtr].position + o.lineIndex[newLinePtr].length - 1
 			} else {
 				o.currentPosition = offset + o.lineIndex[newLinePtr].position
 			}
+		}
+		// Scroll?
+		if o.linePtr-o.topLine+1 == 1 {
+			o.topLine--
 		}
 	}
 }
