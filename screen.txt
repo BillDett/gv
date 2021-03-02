@@ -99,7 +99,7 @@ Notes on Text Input/Outline managment:
     headline into two, creating a sibling headline with all of the text to the right of the cursor from the original headline.
     Hitting Enter as the last character of an existing headline should do nothing (no split).
 
-    Ctrl-Enter inserts a 'soft' newline into the headline text- this is just a formatting mark and does not 'finish' or 'split' a 
+    Alt-Enter inserts a 'soft' newline into the headline text- this is just a formatting mark and does not 'finish' or 'split' a 
     headline.
 
     Tab will start a new child headline under the current one.  If Tab is hit on the first headline, do nothing.
@@ -108,7 +108,7 @@ Notes on Text Input/Outline managment:
     Shift-Tab 'raises' the headline up a level so that it's now a sibling of its parent.  Shift-Tab on headlines without
     parents does nothing.
     
-    Backspace/Delete work on text only within a headline.  Deleting all of the text in a headline deletes the headline.
+    Backspace/Delete work on text only within a headline.
     Backspace on first character of a headline 'joins' that headline with its previous sibling (if one exists).  If no
     siblings exist, do nothing.
     Delete on last character of a headline 'joins' the next sibling headline with this one.  If no next sibling
@@ -130,3 +130,15 @@ lower edge after a resize event, we should ensure that the current line remains 
 
 Cursor position must stay in same place even when screen is resized (e.g. we should calculate the cursor position 
 based upon the actual position within the text buffer after each event rather than store independently)
+
+
+Export as text (with choice of bullet/numbering)
+-------------
+ I. headline 1 text
+    a. headline 1-2 text
+        i. headline 1-2-1 text
+    b. headline 1-3 text
+II. headline 2 text
+    a. headline 2-2 text
+    b. headline 2-3 text
+
