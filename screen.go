@@ -420,7 +420,7 @@ func (o *outline) moveUp() {
 			}
 		}
 		// Scroll?
-		if o.linePtr-o.topLine+1 == 1 {
+		if o.linePtr != 0 && o.linePtr-o.topLine+1 == 1 {
 			o.topLine--
 		}
 	}
