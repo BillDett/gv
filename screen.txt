@@ -85,6 +85,8 @@ Additional commands:
         * Open an outline file
     * CTRL-S:
         * Save current outline file (assign name if necessary)
+    * CTRL-Z:
+        * Undo last edit
 
 Notes on Text Input/Outline managment:
     Unlike a general purpose text editor, this is an outliner.  Therefore the text editing is confined within headlines. Within 

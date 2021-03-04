@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -29,6 +28,20 @@ type line struct {
 	position      int  // Text position in editor.text()
 	length        int  // How many runes in this "line"
 }
+
+// a delimiter is a multi-rune token that separates each headline, indicating its level in the hierarchy
+// these are created by scanning the outline.buf runes
+type delimiter struct {
+	lhs   int // position of nodeDelim on left
+	level int // level of headline
+	rhs   int // position of nodeDelim on right
+}
+
+// for tokenization
+const (
+	forward = iota
+	backward
+)
 
 // Render buffer- where we write the outline characters to during layout phase
 var renderBuf [][]rune
@@ -98,7 +111,7 @@ func drawBorder(s tcell.Screen, x, y, width, height int) {
 	}
 }
 
-func indentCode(level int) string {
+func delimiterString(level int) string {
 	return fmt.Sprintf("%c%d%c", nodeDelim, level, nodeDelim)
 }
 
@@ -117,10 +130,11 @@ func (o *outline) init() {
 
 func (o *outline) dump() {
 	text := o.buf.Runes()
-	out := fmt.Sprintf("lastPos %d\tcurrentPosition %d (%#U)\tlinePtr %d\nlineIndex %v\nlineIndex.position %d\tlineIndex.length %v\tdbg %d\tdbg2 %d\n# of lines: %d\ttopLine %d\teditorheight %d\n",
+	d, s, e := o.currentHeadline(o.currentPosition)
+	out := fmt.Sprintf("lastPos %d\tcurrentPosition %d (%#U)\tlinePtr %d\nlineIndex %v\nlineIndex.position %d\tlineIndex.length %v\tdbg %d\tdbg2 %d\n# of lines: %d\ttopLine %d\teditorheight %d\ncurrent delim %v (%d:%d)\n",
 		o.buf.lastpos, o.currentPosition, (*text)[o.currentPosition], o.linePtr, o.lineIndex,
 		o.lineIndex[o.linePtr].position, o.lineIndex[o.linePtr].length, dbg, dbg2, len(o.lineIndex),
-		o.topLine, o.editorHeight)
+		o.topLine, o.editorHeight, d, s, e)
 	ioutil.WriteFile("dump.txt", []byte(out), 0644)
 }
 
@@ -148,7 +162,7 @@ func (o *outline) setScreenSize(s tcell.Screen) {
 
 // appends a new headline onto the outline (before the final <EOFDelim>)
 func (o *outline) addHeadline(text string, level int) {
-	o.buf.Insert(o.buf.lastpos-2, indentCode(level)+text)
+	o.buf.Insert(o.buf.lastpos-2, delimiterString(level)+text)
 }
 
 // Store a 'logical' line- this is a rendered line of text on the screen. We use this index
@@ -157,7 +171,56 @@ func (o *outline) recordLogicalLine(bullet rune, indent int, hangingIndent int, 
 	o.lineIndex = append(o.lineIndex, line{bullet, indent, hangingIndent, position, length})
 }
 
-// Figure out what is level of headline under o.currentPosition
+func (o *outline) delim(position int, direction int) int {
+	// Find position of next nodeDelim (based on direction) from position
+	//  Return 0 or len(text) if nodeDelim found (which would be an error)
+	text := (*o.buf.Runes())
+	var start int
+	if direction == forward {
+		for start = position; text[start] != nodeDelim && start < len(text); start++ {
+		}
+	} else {
+		for start = position; text[start] != nodeDelim && start > 0; start-- {
+		}
+	}
+	return start
+}
+
+func (o *outline) integer(position int, direction int) (int, int, int) {
+	// Find the start and end position and numerical value of an integer (based on direction) from position
+	//   Position must be sitting on a digit character
+	text := (*o.buf.Runes())
+	var start, end, level int
+	if !unicode.IsDigit(text[position]) { // This is an error- we must be on a digit
+		return -1, -1, -1
+	}
+	if direction == forward {
+		start = position
+		for end = start; unicode.IsDigit(text[end]) && end < len(text); end++ {
+		}
+	} else {
+		end = position
+		for start = end; unicode.IsDigit(text[start]) && start > 0; start-- {
+		}
+	}
+	is := string(text[start+1 : end+1])
+	//fmt.Printf("Converting >%s< to integer\n", is)
+	level, _ = strconv.Atoi(is)
+	return start, end, level
+}
+
+func (o *outline) test() {
+	fmt.Printf("Previous delim %d, Next delim %d\n", o.delim(3, backward), o.delim(3, forward))
+	d, s, e := o.currentHeadline(o.currentPosition)
+	fmt.Printf("Current Headline delim %d/%d/%d, start %d, end %d\n", d.lhs, d.level, d.rhs, s, e)
+	d, s, e = o.nextHeadline(o.currentPosition)
+	for d != nil {
+		fmt.Printf("Next Headline delim %d/%d/%d, start %d, end %d\n", d.lhs, d.level, d.rhs, s, e)
+		d, s, e = o.nextHeadline(s)
+	}
+}
+
+// Get positional information for headline under o.currentPosition
 // Walk backwards from current positon until you find the leading <nodeDelim> and then extract the level
 func (o *outline) currentLevel() int {
 	text := (*o.buf.Runes())
@@ -177,53 +240,71 @@ func (o *outline) currentLevel() int {
 	return level
 }
 
-// Tokenize the text to extract the next Headline, returning level, start position and end position of headline
-func (o *outline) nextHeadline(position int) (int, int, int, error) {
-	// find the first delimiter
+// Get the delimiter and start/end of the current headline based on current position
+func (o *outline) currentHeadline(position int) (*delimiter, int, int) {
+	text := *(o.buf.Runes())
+	d := delimiter{0, 0, 0}
+	var extent int
+	if text[position] == nodeDelim { // "back up" if we're sitting on a trailing <nodeDelim> at end of a line
+		position--
+	}
+	d.rhs = o.delim(position, backward)
+	s, _, l := o.integer(d.rhs-1, backward)
+	if s != -1 {
+		d.level = l
+		d.lhs = o.delim(s, backward)
+		extent = o.delim(d.rhs+1, forward) // find end of headline text
+		return &d, d.rhs + 1, extent
+	} else {
+		return nil, 0, 0
+	}
+}
+
+// Tokenize the text to extract the next Headline, returning delimiter, start position and end position of headline
+func (o *outline) nextHeadline(position int) (*delimiter, int, int) {
 	text := *(o.buf.Runes())
 	var p, q int
-	for p = position; p < len(text); p++ {
-		if text[p] == nodeDelim {
-			break
-		}
-	}
-	if p == len(text) { // Didn't find any delmiter
-		return 0, 0, 0, errors.New("Didn't find any delmiter in text")
+	// scan to end of this headline, find the first nodeDelim
+	p = o.delim(position, forward)
+	//fmt.Printf("first nodeDelim %d\n", p)
+	// make sure we're not at end of the outline
+	if text[p+1] != eof {
+		// scan forward find the matching nodeDelim
+		q = o.delim(p+1, forward)
+		//fmt.Printf("second nodeDelim %d\n", p)
+		q++ // skip over nodeDelim
+		return o.currentHeadline(q)
 	} else {
-		// text[p] is first delimiter, find the matching one
-		for q = p + 1; q < len(text); q++ {
-			if text[q] == nodeDelim {
-				break
-			}
-		}
-		level, err := strconv.Atoi(string(text[p+1 : q]))
-		if err != nil {
-			// badly formed level
-			return 0, 0, 0, fmt.Errorf("Badly formed delimiter %s seen", string(text[p+1:q]))
-		}
-		// Find extent of this headline
-		for p = q + 1; p < len(text); p++ {
-			if text[p] == nodeDelim {
-				break
-			}
-		}
-		return level, q + 1, p, nil
+		//fmt.Printf("Done!\n")
+		return nil, 0, 0
 	}
+}
+
+// Set the level of current outline to newLevel and adjust all subsequent "child" headlines.
+// if promote == true, increase each child's level by 1
+// if promote == false, decrease each child's level by 1
+// We determine when we are finished finding children when there are no more headlines or next headline's level == this headline
+func (o *outline) setLevel(newLevel int, promote bool) {
+
 }
 
 func layoutOutline(s tcell.Screen, o *outline, width int, height int) {
 	y := 1
 	o.lineIndex = []line{}
 	text := o.buf.Runes()
-	var level, start, end int
+	var start, end int
+	var delim *delimiter
 	var err error
-	for end < len(*text)-2 { // Scan thru all headlines (stop before you hit EOL Delim)
-		level, start, end, err = o.nextHeadline(end)
+	delim, start, end = o.nextHeadline(start)
+	//	for end < len(*text)-2 && delim != nil { // Scan thru all headlines (stop before you hit EOL Delim)
+	for delim != nil { // Scan thru all headlines (stop before you hit EOL Delim)
+
 		if err != nil {
 			fmt.Printf("%v\n", err)
 			break
 		}
-		y = layoutHeadline(s, o, text, start, end+1, y, level, false) // we use end+1 so we render the <nodeDelim>- this gives us something at end of headline to start typing on when appending text to headline
+		y = layoutHeadline(s, o, text, start, end+1, y, delim.level, false) // we use end+1 so we render the <nodeDelim>- this gives us something at end of headline to start typing on when appending text to headline
+		delim, start, end = o.nextHeadline(end)
 	}
 }
 
@@ -339,7 +420,7 @@ func (o *outline) moveRight() {
 			peek := o.currentPosition + 1
 			if text[peek] != eof {
 				// at last character of current headline, move to beginning of next headline
-				_, o.currentPosition, _, _ = o.nextHeadline(o.currentPosition)
+				_, o.currentPosition, _ = o.nextHeadline(o.currentPosition)
 			}
 		} else {
 			// Just move to next character in this headline
@@ -467,7 +548,7 @@ func (o *outline) delete() {
 
 // Enter always creates a new headline at current position at same level as current headline
 func (o *outline) enterPressed() {
-	delim := indentCode(o.currentLevel())
+	delim := delimiterString(o.currentLevel())
 	o.buf.Insert(o.currentPosition, delim)
 	o.moveRight()
 }
@@ -475,6 +556,12 @@ func (o *outline) enterPressed() {
 // Tab indents a headline and all subsequent headlines with levels > this level, if not on the first headline
 // TODO: Think we should factor out some more low-level utilities for finding/changing headlines within the
 //   stream to make this easier.
+/*
+If Tab is hit on the first headline, do nothing.
+    If Tab is hit on any other headline, and if previous headline is same level as this headline,
+		this headline (and all if its children) become a child of the previous headline (level++ on each).
+		(We can find all children by scanning each subsequent headline until we see level increase)
+*/
 func (o *outline) tabPressed() {
 
 }
@@ -532,6 +619,7 @@ func handleEvents(s tcell.Screen, o *outline) {
 
 func main() {
 
+	//s, _ := tcell.NewScreen()
 	s, e := tcell.NewScreen()
 	if e != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", e)
@@ -546,6 +634,7 @@ func main() {
 		Background(tcell.ColorBlack).
 		Foreground(tcell.ColorGreen)
 	s.SetStyle(defStyle)
+
 	//o := genTestOutline(s)
 	o := newOutline(s)
 	if len(os.Args) > 1 {
@@ -554,6 +643,8 @@ func main() {
 	} else {
 		o.init()
 	}
+
+	//o.test()
 
 	drawScreen(s, o)
 
