@@ -43,9 +43,6 @@ const (
 	backward
 )
 
-// Render buffer- where we write the outline characters to during layout phase
-var renderBuf [][]rune
-
 /*
  Outline structure takes the following form:
  	<nodeDelim><level><nodeDelim><headline><nodeDelim><level><nodeDelim><headline><nodeDelim><EOF>
@@ -171,9 +168,9 @@ func (o *outline) recordLogicalLine(bullet rune, indent int, hangingIndent int, 
 	o.lineIndex = append(o.lineIndex, line{bullet, indent, hangingIndent, position, length})
 }
 
+// Find position of next nodeDelim (based on direction) from position
+//  Return 0 or len(text) if nodeDelim found (which would be an error)
 func (o *outline) delim(position int, direction int) int {
-	// Find position of next nodeDelim (based on direction) from position
-	//  Return 0 or len(text) if nodeDelim found (which would be an error)
 	text := (*o.buf.Runes())
 	var start int
 	if direction == forward {
@@ -186,12 +183,14 @@ func (o *outline) delim(position int, direction int) int {
 	return start
 }
 
+// Find the start and end position and numerical value of an integer (based on direction) from position
+//   Position must be sitting on a digit character
 func (o *outline) integer(position int, direction int) (int, int, int) {
-	// Find the start and end position and numerical value of an integer (based on direction) from position
-	//   Position must be sitting on a digit character
+
 	text := (*o.buf.Runes())
 	var start, end, level int
 	if !unicode.IsDigit(text[position]) { // This is an error- we must be on a digit
+		fmt.Printf("Saw (%#U)\n", text[position])
 		return -1, -1, -1
 	}
 	if direction == forward {
@@ -214,14 +213,33 @@ func (o *outline) test() {
 	d, s, e := o.currentHeadline(o.currentPosition)
 	fmt.Printf("Current Headline delim %d/%d/%d, start %d, end %d\n", d.lhs, d.level, d.rhs, s, e)
 	d, s, e = o.nextHeadline(o.currentPosition)
+	var last int
+	c := 0
+	var d2 *delimiter
 	for d != nil {
+		if c == 2 {
+			d2 = d
+		}
 		fmt.Printf("Next Headline delim %d/%d/%d, start %d, end %d\n", d.lhs, d.level, d.rhs, s, e)
 		d, s, e = o.nextHeadline(s)
+		if e > last {
+			last = s
+		}
+		c++
 	}
+	d, s, e = o.previousHeadline(last)
+	if d != nil {
+		fmt.Printf("Second to last Headline delim %d/%d/%d, start %d, end %d\n", d.lhs, d.level, d.rhs, s, e)
+	}
+	fmt.Printf("d2 delim %d/%d/%d\n", d2.lhs, d2.level, d2.rhs)
+	o.setLevel(d2, 5)
+	d2, s2, e2 := o.currentHeadline(d2.rhs + 1)
+	fmt.Printf("now d2 delim %d/%d/%d, start %d, end %d\n", d2.lhs, d2.level, d2.rhs, s2, e2)
 }
 
 // Get positional information for headline under o.currentPosition
 // Walk backwards from current positon until you find the leading <nodeDelim> and then extract the level
+// TODO: REMOVE??
 func (o *outline) currentLevel() int {
 	text := (*o.buf.Runes())
 	var begin, rhs, start int
@@ -261,31 +279,60 @@ func (o *outline) currentHeadline(position int) (*delimiter, int, int) {
 }
 
 // Tokenize the text to extract the next Headline, returning delimiter, start position and end position of headline
+//  Return a nil delimiter if we're on last Headline
 func (o *outline) nextHeadline(position int) (*delimiter, int, int) {
 	text := *(o.buf.Runes())
 	var p, q int
 	// scan to end of this headline, find the first nodeDelim
 	p = o.delim(position, forward)
-	//fmt.Printf("first nodeDelim %d\n", p)
 	// make sure we're not at end of the outline
 	if text[p+1] != eof {
 		// scan forward find the matching nodeDelim
 		q = o.delim(p+1, forward)
-		//fmt.Printf("second nodeDelim %d\n", p)
 		q++ // skip over nodeDelim
 		return o.currentHeadline(q)
 	} else {
-		//fmt.Printf("Done!\n")
 		return nil, 0, 0
 	}
+}
+
+// Tokenize the text to extract the previous Headline, returning delimiter, start position and end position of headline
+//  Return a nil delimiter if we're on first Headline
+func (o *outline) previousHeadline(position int) (*delimiter, int, int) {
+	d, _, _ := o.currentHeadline(position)
+	if d.lhs != 0 { // Are we not on first headline?
+		return o.currentHeadline(d.lhs - 1)
+	}
+
+	return nil, 0, 0
 }
 
 // Set the level of current outline to newLevel and adjust all subsequent "child" headlines.
 // if promote == true, increase each child's level by 1
 // if promote == false, decrease each child's level by 1
 // We determine when we are finished finding children when there are no more headlines or next headline's level == this headline
-func (o *outline) setLevel(newLevel int, promote bool) {
+func (o *outline) changeRank(promote bool) {
+	difference := 1
+	if !promote {
+		difference = -1
+	}
+	d, _, _ := o.currentHeadline(o.currentPosition)
+	origLevel := d.level
+	o.setLevel(d, d.level+difference)
+	// add the difference to all children
+	var s int
+	d, s, _ = o.nextHeadline(o.currentPosition)
+	for d != nil && d.level != origLevel {
+		o.setLevel(d, d.level+difference)
+		d, s, _ = o.nextHeadline(s)
+	}
+}
 
+// Modify the level in the buffer for this delimiter (replace characters for the integer)
+func (o *outline) setLevel(d *delimiter, newLevel int) {
+	levelLen := d.rhs - d.lhs - 1
+	o.buf.Delete(d.lhs+1, levelLen)
+	o.buf.Insert(d.lhs+1, strconv.FormatInt(int64(newLevel), 10))
 }
 
 func layoutOutline(s tcell.Screen, o *outline, width int, height int) {
@@ -553,17 +600,19 @@ func (o *outline) enterPressed() {
 	o.moveRight()
 }
 
-// Tab indents a headline and all subsequent headlines with levels > this level, if not on the first headline
-// TODO: Think we should factor out some more low-level utilities for finding/changing headlines within the
-//   stream to make this easier.
 /*
 If Tab is hit on the first headline, do nothing.
-    If Tab is hit on any other headline, and if previous headline is same level as this headline,
-		this headline (and all if its children) become a child of the previous headline (level++ on each).
-		(We can find all children by scanning each subsequent headline until we see level increase)
+    Otherwise if previous headline is <= level as this headline, promote this headline
+	TODO: SOME BUGS WHEN WE GET TO LEVEL 10 GO FIGURE...
 */
 func (o *outline) tabPressed() {
-
+	if o.linePtr != 0 {
+		dCurrent, _, _ := o.currentHeadline(o.currentPosition)
+		dPrevious, _, _ := o.previousHeadline(o.currentPosition)
+		if dCurrent.level <= dPrevious.level {
+			o.changeRank(true)
+		}
+	}
 }
 
 func handleEvents(s tcell.Screen, o *outline) {
