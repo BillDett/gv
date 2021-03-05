@@ -488,3 +488,28 @@ func (o *outline) tabPressed(promote bool) {
 		}
 	}
 }
+
+// Delete the current headline (if we're not on the first headline).  Also delete all children.
+// If on first headline and this is the only headline, remove all of the text (but keep the headline there since we always need at least one headline)
+func (o *outline) deleteHeadline() {
+	var s, e, currentStart, start, end int
+	var dCurrent, d *delimiter
+	dCurrent, currentStart, end = o.currentHeadline(o.currentPosition)
+	d, s, e = o.nextHeadline(o.currentPosition)
+	if o.linePtr != 0 {
+		_, prevStart, _ := o.previousHeadline(o.currentPosition)
+		start = dCurrent.lhs
+		for d != nil && d.level > dCurrent.level {
+			end = e
+			d, s, e = o.nextHeadline(s)
+		}
+		// Now we should be able to delete start:end-1 from buf
+		extent := end - start
+		o.buf.Delete(start, extent)
+		o.currentPosition = prevStart
+	} else if d == nil { // delete all text in first headline if it's the only one left
+		extent := end - currentStart
+		o.buf.Delete(currentStart, extent)
+		o.currentPosition = 3
+	}
+}

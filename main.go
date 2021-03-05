@@ -315,6 +315,9 @@ func handleEvents(s tcell.Screen, o *outline) {
 				dirty = true
 				o.insertRuneAtCurrentPosition(ev.Rune())
 				drawScreen(s, o)
+			case tcell.KeyCtrlD:
+				o.deleteHeadline()
+				drawScreen(s, o)
 			case tcell.KeyCtrlF: // for debugging
 				o.dump()
 			case tcell.KeyCtrlS:
