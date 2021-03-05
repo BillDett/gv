@@ -205,7 +205,10 @@ func handleEvents(s tcell.Screen, o *outline) {
 				o.enterPressed()
 				drawScreen(s, o)
 			case tcell.KeyTab:
-				o.tabPressed()
+				o.tabPressed(true)
+				drawScreen(s, o)
+			case tcell.KeyBacktab:
+				o.tabPressed(false)
 				drawScreen(s, o)
 			case tcell.KeyRune:
 				o.insertRuneAtCurrentPosition(ev.Rune())
@@ -242,6 +245,7 @@ func main() {
 	s.SetStyle(defStyle)
 
 	//o := genTestOutline(s)
+
 	o := newOutline(s)
 	if len(os.Args) > 1 {
 		currentFilename = os.Args[1]
