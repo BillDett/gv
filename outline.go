@@ -118,7 +118,7 @@ func (o *outline) setScreenSize(s tcell.Screen) {
 	var width int
 	width, height := s.Size()
 	o.editorWidth = int(float64(width) * 0.7)
-	o.editorHeight = height - 2
+	o.editorHeight = height - 3 // 2 rows for border, 1 row for interaction
 }
 
 // appends a new headline onto the outline (before the final <EOFDelim>)

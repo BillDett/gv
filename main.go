@@ -3,12 +3,15 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"unicode"
 
 	"github.com/gdamore/tcell/v2"
 )
 
 var currentFilename string
+
+var fileTitle []rune
 
 // Standard line drawing characters
 const tlcorner = '\u250c'
@@ -17,6 +20,8 @@ const llcorner = '\u2514'
 const lrcorner = '\u2518'
 const hline = '\u2500'
 const vline = '\u2502'
+
+const dirtyFlag = '*'
 
 const htriangle = '\u25B6'
 const small_htriangle = '\u25B8'
@@ -29,16 +34,22 @@ const dash_bullet = '\u2043'
 const shear_bullet = '\u25B0'
 const box_bullet = '\u25A0'
 
+var dirty bool = false // Is the outliine buffer modified since last save?
+
 func drawBorder(s tcell.Screen, x, y, width, height int) {
 	// Corners
 	s.SetContent(x, y, tlcorner, nil, defStyle)
 	s.SetContent(x+width-1, y, trcorner, nil, defStyle)
 	s.SetContent(x, y+height-1, llcorner, nil, defStyle)
 	s.SetContent(x+width-1, y+height-1, lrcorner, nil, defStyle)
+	tb := renderTopBorder(width - 2)
+	bb := renderBottomBorder(width - 2)
 	// Horizontal
-	for bx := x + 1; bx < x+width-1; bx++ {
-		s.SetContent(bx, y, hline, nil, defStyle)
-		s.SetContent(bx, y+height-1, hline, nil, defStyle)
+	for bx := 0; bx < len(*tb); bx++ {
+		s.SetContent(bx+x+1, y, (*tb)[bx], nil, defStyle)
+		s.SetContent(bx+x+1, y+height-1, (*bb)[bx], nil, defStyle)
+		//s.SetContent(bx, y, hline, nil, defStyle)
+		//s.SetContent(bx, y+height-1, hline, nil, defStyle)
 	}
 	// Vertical
 	for by := y + 1; by < y+height-1; by++ {
@@ -47,7 +58,37 @@ func drawBorder(s tcell.Screen, x, y, width, height int) {
 	}
 }
 
-func layoutOutline(s tcell.Screen, o *outline, width int, height int) {
+func renderTopBorder(width int) *[]rune {
+	var row []rune
+	titlePos := (width - len(fileTitle)) - 3
+	for p := 0; p < titlePos; p++ {
+		row = append(row, hline)
+	}
+	row = append(row, fileTitle...)
+	row = append(row, hline)
+	if dirty {
+		row = append(row, dirtyFlag)
+	} else {
+		row = append(row, hline)
+	}
+	row = append(row, hline)
+	return &row
+}
+
+func renderBottomBorder(width int) *[]rune {
+	var row []rune
+	for p := 0; p < width; p++ {
+		row = append(row, hline)
+	}
+	return &row
+}
+
+func setFileTitle(filename string) {
+	fileTitle = append(fileTitle, []rune("Filename: ")...)
+	fileTitle = append(fileTitle, []rune(filename)...)
+}
+
+func layoutOutline(s tcell.Screen, o *outline) {
 	y := 1
 	o.lineIndex = []line{}
 	text := o.buf.Runes()
@@ -165,11 +206,71 @@ func genTestOutline(s tcell.Screen) *outline {
 func drawScreen(s tcell.Screen, o *outline) {
 	width, height := s.Size()
 	s.Clear()
-	drawBorder(s, 0, 0, width, height)
-	layoutOutline(s, o, width, height)
+	drawBorder(s, 0, 0, width, height-1)
+	o.setScreenSize(s)
+	layoutOutline(s, o)
 	renderOutline(s, o)
 	s.ShowCursor(cursX, cursY)
 	s.Show()
+}
+
+func clearPrompt(s tcell.Screen) {
+	width, height := s.Size()
+	// Clear the row
+	for x := 0; x < width; x++ {
+		s.SetContent(x, height-1, ' ', nil, defStyle)
+	}
+}
+
+func renderPrompt(s tcell.Screen, cx int, msg string, response string) {
+	width, height := s.Size()
+	y := height - 1
+	var x, x2 int
+	var r rune
+	clearPrompt(s)
+	// Brackets
+	s.SetContent(0, y, '[', nil, defStyle)
+	s.SetContent(width-1, y, ']', nil, defStyle)
+	// Write the content
+	for x, r = range msg {
+		s.SetContent(1+x, y, r, nil, defStyle)
+	}
+	for x2, r = range response {
+		s.SetContent(2+x+x2, y, r, nil, defStyle)
+	}
+	s.ShowCursor(cx, y)
+	s.Show()
+}
+
+// Prompt the user for some input- blocking main event loop
+func prompt(s tcell.Screen, o *outline, msg string) string {
+	var response []rune
+	var cursX int = len(msg) + 1
+	for {
+		renderPrompt(s, cursX, msg, string(response))
+		switch ev := s.PollEvent().(type) {
+		case *tcell.EventResize:
+			s.Sync()
+			drawScreen(s, o)
+		case *tcell.EventKey:
+			switch ev.Key() {
+			case tcell.KeyRune:
+				response = append(response, ev.Rune())
+				cursX++
+			case tcell.KeyBackspace, tcell.KeyBackspace2:
+				if len(response) > 0 {
+					response = response[:len(response)-1]
+					cursX--
+				}
+			case tcell.KeyEnter:
+				clearPrompt(s)
+				return string(response)
+			case tcell.KeyEscape:
+				clearPrompt(s)
+				return ""
+			}
+		}
+	}
 }
 
 func handleEvents(s tcell.Screen, o *outline) {
@@ -180,9 +281,6 @@ func handleEvents(s tcell.Screen, o *outline) {
 			drawScreen(s, o)
 		case *tcell.EventKey:
 			switch ev.Key() {
-			case tcell.KeyEscape:
-				s.Fini()
-				os.Exit(0)
 			case tcell.KeyDown:
 				o.moveDown()
 				drawScreen(s, o)
@@ -196,12 +294,15 @@ func handleEvents(s tcell.Screen, o *outline) {
 				o.moveLeft()
 				drawScreen(s, o)
 			case tcell.KeyBackspace, tcell.KeyBackspace2:
+				dirty = true
 				o.backspace()
 				drawScreen(s, o)
 			case tcell.KeyDelete:
+				dirty = true
 				o.delete()
 				drawScreen(s, o)
 			case tcell.KeyEnter:
+				dirty = true
 				o.enterPressed()
 				drawScreen(s, o)
 			case tcell.KeyTab:
@@ -211,16 +312,49 @@ func handleEvents(s tcell.Screen, o *outline) {
 				o.tabPressed(false)
 				drawScreen(s, o)
 			case tcell.KeyRune:
+				dirty = true
 				o.insertRuneAtCurrentPosition(ev.Rune())
 				drawScreen(s, o)
 			case tcell.KeyCtrlF: // for debugging
 				o.dump()
 			case tcell.KeyCtrlS:
 				if currentFilename == "" {
-					// TODO: Should prompt for a filename
-					currentFilename = "outline.gv"
+					f := prompt(s, o, "Filename: ")
+					if f != "" {
+						currentFilename = f
+						dirty = false
+						o.save(currentFilename)
+						setFileTitle(currentFilename)
+					}
+				} else {
+					dirty = false
+					o.save(currentFilename)
 				}
-				o.save(currentFilename)
+				drawScreen(s, o)
+			case tcell.KeyCtrlQ:
+				save := prompt(s, o, "Outline modified, save [Y|N]? ")
+				if save == "" {
+					clearPrompt(s)
+					drawScreen(s, o)
+					break
+				}
+				if strings.ToUpper(save) != "N" {
+					if currentFilename == "" {
+						f := prompt(s, o, "Filename: ")
+						if f != "" {
+							o.save(f)
+						} else { // skipped setting filename, cancel quit request
+							clearPrompt(s)
+							drawScreen(s, o)
+							break
+						}
+					} else {
+						o.save(currentFilename)
+						drawScreen(s, o)
+					}
+				}
+				s.Fini()
+				os.Exit(0)
 			}
 		}
 	}
@@ -244,12 +378,11 @@ func main() {
 		Foreground(tcell.ColorGreen)
 	s.SetStyle(defStyle)
 
-	//o := genTestOutline(s)
-
 	o := newOutline(s)
 	if len(os.Args) > 1 {
 		currentFilename = os.Args[1]
 		o.load(currentFilename)
+		setFileTitle(currentFilename)
 	} else {
 		o.init()
 	}
