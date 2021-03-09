@@ -95,7 +95,7 @@ func layoutOutline(s tcell.Screen, o *outline) {
 	var start, end int
 	var delim *delimiter
 	var err error
-	delim, start, end = o.nextHeadline(start)
+	delim, start, end = o.nextHeadline(*text, start)
 	//	for end < len(*text)-2 && delim != nil { // Scan thru all headlines (stop before you hit EOL Delim)
 	for delim != nil { // Scan thru all headlines (stop before you hit EOL Delim)
 
@@ -103,8 +103,8 @@ func layoutOutline(s tcell.Screen, o *outline) {
 			fmt.Printf("%v\n", err)
 			break
 		}
-		y = layoutHeadline(s, o, text, start, end+1, y, o.headlineIndex[delim.id].level, false) // we use end+1 so we render the <nodeDelim>- this gives us something at end of headline to start typing on when appending text to headline
-		delim, start, end = o.nextHeadline(end)
+		y = layoutHeadline(s, o, text, start, end+1, y, o.headlineIndex[delim.id].Level, false) // we use end+1 so we render the <nodeDelim>- this gives us something at end of headline to start typing on when appending text to headline
+		delim, start, end = o.nextHeadline(*text, end)
 	}
 }
 
@@ -334,9 +334,14 @@ func handleEvents(s tcell.Screen, o *outline) {
 					f := prompt(s, o, "Filename: ")
 					if f != "" {
 						currentFilename = f
-						dirty = false
-						o.save(currentFilename)
-						setFileTitle(currentFilename)
+						err := o.save(currentFilename)
+						if err == nil {
+							dirty = false
+							setFileTitle(currentFilename)
+						} else {
+							msg := fmt.Sprintf("Error saving file: %v", err)
+							prompt(s, o, msg)
+						}
 					}
 				} else {
 					dirty = false
@@ -393,8 +398,13 @@ func main() {
 	o := newOutline(s)
 	if len(os.Args) > 1 {
 		currentFilename = os.Args[1]
-		o.load(currentFilename)
-		setFileTitle(currentFilename)
+		err := o.load(currentFilename)
+		if err == nil {
+			setFileTitle(currentFilename)
+		} else {
+			msg := fmt.Sprintf("Error opening file: %v", err)
+			prompt(s, o, msg)
+		}
 	} else {
 		o.init()
 	}

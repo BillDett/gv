@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -14,18 +15,18 @@ type outline struct {
 	buf             PieceTable        // buffer holding the text of the outline
 	lineIndex       []line            // Text Position index for each "line" after editor has been laid out.
 	linePtr         int               // index of the line currently beneath the cursor
-	headlineIndex   map[int]*headline // map of headline metadata keyed by headline id
+	headlineIndex   map[int]*Headline // map of headline metadata keyed by headline id
 	editorWidth     int               // width of an editor column
 	editorHeight    int               // height of the editor window
 	currentPosition int               // the current position within the buf
 	topLine         int               // index of the topmost "line" of the window in lineIndex
 }
 
-type headline struct {
-	id          int
-	level       int
-	visible     bool
-	haschildren bool
+// Headline is an entry in the headlineIndex map
+type Headline struct {
+	Level       int
+	Visible     bool
+	Haschildren bool
 }
 
 // a line is a logical representation of a line that is rendered in the window
@@ -54,9 +55,10 @@ const (
 
 /*
  Outline structure takes the following form:
- 	<nodeDelim><id><nodeDelim><headline><nodeDelim><id><nodeDelim><headline><nodeDelim><EOF>
+ 	<headlineIndex><nodeDelim><id><nodeDelim><headline><nodeDelim><id><nodeDelim><headline>...<nodeDelim><EOF>
 
- where headline order denotes tree structure.  <id> is the unique id of the headline.   Tree is
+<headlineIndex> is a map of Headline metadata in JSON format.
+ Headline order denotes tree structure.  <id> is the unique id of the headline.   Tree is
  denoted by an increasing headline.level value in consecutive headlines.  Once headline.level is
  found to be less than previous headline.level, we have just seen a leaf node.
 
@@ -81,7 +83,7 @@ func delimiterString(level int) string {
 }
 
 func newOutline(s tcell.Screen) *outline {
-	o := &outline{*NewPieceTable(""), nil, 0, make(map[int]*headline), 0, 0, 3, 0}
+	o := &outline{*NewPieceTable(""), nil, 0, make(map[int]*Headline), 0, 0, 3, 0}
 	o.setScreenSize(s)
 	return o
 }
@@ -101,7 +103,7 @@ func (o *outline) dump() {
 	}
 	out += "===========================================================================\nHeadlineIndex\n"
 	out += fmt.Sprintf("num keys %d\n", len(o.headlineIndex))
-	d, s, e := o.currentHeadline(o.currentPosition)
+	d, s, e := o.currentHeadline(*(text), o.currentPosition)
 	out += fmt.Sprintf("\nlastPos %d\tcurrentPosition %d (%#U)\tlinePtr %d\nlineIndex %v\nlineIndex.position %d\tlineIndex.length %v\tdbg %d\tdbg2 %d\n# of lines: %d\ttopLine %d\teditorheight %d\ncurrent delim %v (%d:%d)\n",
 		o.buf.lastpos, o.currentPosition, (*text)[o.currentPosition], o.linePtr, o.lineIndex,
 		o.lineIndex[o.linePtr].position, o.lineIndex[o.linePtr].length, dbg, dbg2, len(o.lineIndex),
@@ -111,21 +113,48 @@ func (o *outline) dump() {
 }
 
 // save the outline buffer to a file
-func (o *outline) save(filename string) {
-	ioutil.WriteFile(filename, []byte(o.buf.Text()), 0644)
+func (o *outline) save(filename string) error {
+	var buf []byte
+	b, err := json.Marshal(o.headlineIndex)
+	if err != nil {
+		return err
+	}
+	buf = append(buf, b...)
+	buf = append(buf, []byte(o.buf.Text())...)
+	ioutil.WriteFile(filename, buf, 0644)
+	return nil
 }
 
 // load a .gv file and use it to populate the outline's buffer
-func (o *outline) load(filename string) {
+// TODO: Not working
+func (o *outline) load(filename string) error {
 	buf, err := ioutil.ReadFile(filename)
 	if err != nil {
-		fmt.Printf("Unable to read file %s\n", filename)
-		os.Exit(1)
+		return err
 	}
-	o.buf.InsertRunes(0, []rune(string(buf)))
-	// TODO
-	// TODO: RECONSTRUCT THE HEADLINE INDEX!!
-	// TODO
+	// Extract the index JSON
+	runes := []rune(string(buf))
+	var r rune
+	var c int
+	for c, r = range runes {
+		if r == nodeDelim {
+			break
+		}
+	}
+	fmt.Printf("C is %d\n", c)
+	if c != 0 && c != len(runes) {
+		index := []byte(string(runes[:c-1]))
+		fmt.Printf("Index: >%s<\n", index)
+		err = json.Unmarshal(index, &o.headlineIndex)
+		if err != nil {
+			return err
+		}
+		// Add in the headline text
+		o.buf.InsertRunes(0, runes[c:])
+		return nil
+	} else {
+		return fmt.Errorf("Error: unreadable file %s", filename)
+	}
 }
 
 func (o *outline) setScreenSize(s tcell.Screen) {
@@ -138,13 +167,13 @@ func (o *outline) setScreenSize(s tcell.Screen) {
 // appends a new headline onto the outline (before the final <EOFDelim>)
 func (o *outline) addHeadline(text string, level int) {
 	id := nextHeadlineID(o.headlineIndex)
-	h := &headline{id, level, true, false}
+	h := &Headline{level, true, false}
 	o.headlineIndex[id] = h
 	o.buf.Insert(o.buf.lastpos-2, delimiterString(id)+text)
 }
 
 // utility to get the next Headline id based on maximum key value in headlineIndex
-func nextHeadlineID(headlines map[int]*headline) int {
+func nextHeadlineID(headlines map[int]*Headline) int {
 	var maxNumber int
 	for n := range headlines {
 		if n > maxNumber {
@@ -161,8 +190,8 @@ func (o *outline) recordLogicalLine(bullet rune, indent int, hangingIndent int, 
 }
 
 // Find position of next nodeDelim (based on direction) from position
-func (o *outline) delim(position int, direction int) (int, error) {
-	text := (*o.buf.Runes())
+func (o *outline) delim(text []rune, position int, direction int) (int, error) {
+	//text := (*o.buf.Runes())
 	var start int
 	if direction == forward {
 		for start = position; text[start] != nodeDelim && start < len(text); start++ {
@@ -179,8 +208,8 @@ func (o *outline) delim(position int, direction int) (int, error) {
 
 // Find the start and end position and numerical value of an integer (based on direction) from position
 //   Position must be sitting on a digit character
-func (o *outline) integer(position int, direction int) (int, int, int, error) {
-	text := (*o.buf.Runes())
+func (o *outline) integer(text []rune, position int, direction int) (int, int, int, error) {
+	//text := (*o.buf.Runes())
 	var start, end, level int
 	if !unicode.IsDigit(text[position]) { // This is an error- we must be on a digit
 		//fmt.Printf("Saw (%#U)\n", text[position])
@@ -202,12 +231,13 @@ func (o *outline) integer(position int, direction int) (int, int, int, error) {
 }
 
 func (o *outline) test() {
-	dp1, _ := o.delim(3, backward)
-	dp2, _ := o.delim(3, forward)
+	text := *(o.buf.Runes())
+	dp1, _ := o.delim(text, 3, backward)
+	dp2, _ := o.delim(text, 3, forward)
 	fmt.Printf("Previous delim %d, Next delim %d\n", dp1+1, dp2+1)
-	d, s, e := o.currentHeadline(o.currentPosition)
+	d, s, e := o.currentHeadline(text, o.currentPosition)
 	fmt.Printf("Current Headline delim %d/%d/%d, start %d, end %d\n", d.lhs+1, d.id, d.rhs+1, s+1, e+1)
-	d, s, e = o.nextHeadline(o.currentPosition)
+	d, s, e = o.nextHeadline(text, o.currentPosition)
 	var last int
 	c := 0
 	var d2 *delimiter
@@ -216,19 +246,19 @@ func (o *outline) test() {
 			d2 = d
 		}
 		fmt.Printf("Next Headline delim %d/%d/%d, start %d, end %d\n", d.lhs+1, d.id, d.rhs+1, s+1, e+1)
-		d, s, e = o.nextHeadline(s)
+		d, s, e = o.nextHeadline(text, s)
 		if e > last {
 			last = s
 		}
 		c++
 	}
-	d, s, e = o.nextHeadline(10)
+	d, s, e = o.nextHeadline(text, 10)
 	if d != nil {
 		fmt.Printf("Second Headline delim %d/%d/%d, start %d, end %d\n", d.lhs+1, d.id, d.rhs+1, s+1, e+1)
 	}
 	fmt.Printf("d2 delim %d/%d/%d\n", d.lhs+1, d.id, d.rhs+1)
 	o.setLevel(d2, 5)
-	d2, s2, e2 := o.currentHeadline(d2.rhs + 1)
+	d2, s2, e2 := o.currentHeadline(text, d2.rhs+1)
 	fmt.Printf("now d2 delim %d/%d/%d, start %d, end %d\n", d2.lhs+1, d2.id, d2.rhs+1, s2+1, e2+1)
 }
 
@@ -250,24 +280,24 @@ func (o *outline) currentLevel() int {
 	for start = rhs - 1; text[start] != nodeDelim; start-- {
 	}
 	id, _ := strconv.Atoi(string(text[start+1 : rhs]))
-	return o.headlineIndex[id].level
+	return o.headlineIndex[id].Level
 }
 
 // Get the delimiter and start/end of the current headline based on current position
-func (o *outline) currentHeadline(position int) (*delimiter, int, int) {
-	text := *(o.buf.Runes())
+func (o *outline) currentHeadline(text []rune, position int) (*delimiter, int, int) {
+	//text := *(o.buf.Runes())
 	d := delimiter{0, 0, 0}
 	var err error
 	var extent int
 	if text[position] == nodeDelim { // "back up" if we're sitting on a trailing <nodeDelim> at end of a line
 		position--
 	}
-	d.rhs, err = o.delim(position, backward)
+	d.rhs, err = o.delim(text, position, backward)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		os.Exit(1)
 	}
-	s, _, l, err := o.integer(d.rhs-1, backward)
+	s, _, l, err := o.integer(text, d.rhs-1, backward)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		os.Exit(1)
@@ -275,12 +305,12 @@ func (o *outline) currentHeadline(position int) (*delimiter, int, int) {
 	if s != -1 {
 		//d.level = l
 		d.id = l
-		d.lhs, err = o.delim(s, backward)
+		d.lhs, err = o.delim(text, s, backward)
 		if err != nil {
 			fmt.Printf("%v\n", err)
 			os.Exit(1)
 		}
-		extent, err = o.delim(d.rhs+1, forward) // find end of headline text
+		extent, err = o.delim(text, d.rhs+1, forward) // find end of headline text
 		if err != nil {
 			fmt.Printf("%v\n", err)
 			os.Exit(1)
@@ -293,13 +323,13 @@ func (o *outline) currentHeadline(position int) (*delimiter, int, int) {
 
 // Tokenize the text to extract the next Headline, returning delimiter, start position and end position of headline
 //  Return a nil delimiter if we're on last Headline
-func (o *outline) nextHeadline(position int) (*delimiter, int, int) {
-	text := *(o.buf.Runes())
+func (o *outline) nextHeadline(text []rune, position int) (*delimiter, int, int) {
+	//text := *(o.buf.Runes())
 	//fmt.Printf("Getting next headline from position %d (%#U)\n", position, text[position])
 	var p, q int
 	var err error
 	// scan to end of this headline, find the first nodeDelim
-	p, err = o.delim(position, forward)
+	p, err = o.delim(text, position, forward)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		os.Exit(1)
@@ -307,13 +337,13 @@ func (o *outline) nextHeadline(position int) (*delimiter, int, int) {
 	// make sure we're not at end of the outline
 	if text[p+1] != eof {
 		// scan forward find the matching nodeDelim
-		q, err = o.delim(p+1, forward)
+		q, err = o.delim(text, p+1, forward)
 		if err != nil {
 			fmt.Printf("%v\n", err)
 			os.Exit(1)
 		}
 		q++ // skip over nodeDelim
-		return o.currentHeadline(q)
+		return o.currentHeadline(text, q)
 	} else {
 		return nil, 0, 0
 	}
@@ -321,10 +351,10 @@ func (o *outline) nextHeadline(position int) (*delimiter, int, int) {
 
 // Tokenize the text to extract the previous Headline, returning delimiter, start position and end position of headline
 //  Return a nil delimiter if we're on first Headline
-func (o *outline) previousHeadline(position int) (*delimiter, int, int) {
-	d, _, _ := o.currentHeadline(position)
+func (o *outline) previousHeadline(text []rune, position int) (*delimiter, int, int) {
+	d, _, _ := o.currentHeadline(text, position)
 	if d.lhs != 0 { // Are we not on first headline?
-		return o.currentHeadline(d.lhs - 1)
+		return o.currentHeadline(text, d.lhs-1)
 	}
 
 	return nil, 0, 0
@@ -333,19 +363,20 @@ func (o *outline) previousHeadline(position int) (*delimiter, int, int) {
 // Adjust the level of current outline by adding difference and adjust all subsequent "child" headlines.
 // We determine when we are finished finding children when there are no more headlines or next headline's level > this headline
 func (o *outline) changeRank(difference int) {
-	d, _, _ := o.currentHeadline(o.currentPosition)
+	text := *(o.buf.Runes())
+	d, _, _ := o.currentHeadline(text, o.currentPosition)
 	//fmt.Printf("current delim %d/%d/%d\n", d.lhs, d.level, d.rhs)
-	origLevel := o.headlineIndex[d.id].level
+	origLevel := o.headlineIndex[d.id].Level
 	o.setLevel(d, origLevel+difference)
 	// add the difference to all children
 	var s int
-	d, s, _ = o.nextHeadline(o.currentPosition)
+	d, s, _ = o.nextHeadline(text, o.currentPosition)
 	if d != nil {
-		dl := o.headlineIndex[d.id].level
+		dl := o.headlineIndex[d.id].Level
 		for d != nil && dl > origLevel {
 			//fmt.Printf("next delim %d/%d/%d\n", d.lhs, d.level, d.rhs)
 			offset := o.setLevel(d, dl+difference)
-			d, s, _ = o.nextHeadline(s + offset)
+			d, s, _ = o.nextHeadline(text, s+offset)
 		}
 	}
 }
@@ -362,7 +393,7 @@ func (o *outline) setLevel(d *delimiter, newLevel int) int {
 	//fmt.Printf("Update >%d< with new level %d\n", d.level, newLevel)
 	//o.buf.Delete(d.lhs+1, levelLen)
 	//o.buf.Insert(d.lhs+1, newLevelStr)
-	o.headlineIndex[d.id].level = newLevel
+	o.headlineIndex[d.id].Level = newLevel
 	//return newLevelLen - levelLen // Did we add or remove runes to the buffer with this change of level?
 	return levelLen
 }
@@ -374,7 +405,7 @@ func (o *outline) moveRight() {
 			peek := o.currentPosition + 1
 			if text[peek] != eof {
 				// at last character of current headline, move to beginning of next headline
-				_, o.currentPosition, _ = o.nextHeadline(o.currentPosition)
+				_, o.currentPosition, _ = o.nextHeadline(text, o.currentPosition)
 			}
 		} else {
 			// Just move to next character in this headline
@@ -475,15 +506,19 @@ func (o *outline) backspace() {
 				var start int
 				for start = posToRemove - 1; text[start] != nodeDelim; start-- { // find start/end of the nodeDelims
 				}
+				d, _, _ := o.currentHeadline(text, o.currentPosition)
+				delete(o.headlineIndex, d.id)
 				o.buf.Delete(start, posToRemove-start+1) // Remove the <nodeDelim><Level><nodeDelim> fragment
 			}
 		} else {
 			o.moveLeft()
 			o.buf.Delete(o.currentPosition, 1)
 		}
+		o.dump()
 	}
 }
 
+// TODO: This is pretty clunky when we join headlines- we can streamline this code a lot
 func (o *outline) delete() {
 	if o.buf.lastpos > 2 {
 		text := *(o.buf.Runes())
@@ -492,6 +527,8 @@ func (o *outline) delete() {
 				var start int
 				for start = o.currentPosition + 1; text[start] != nodeDelim; start++ { // find start/end of the nodeDelims
 				}
+				d, _, _ := o.nextHeadline(text, o.currentPosition)
+				delete(o.headlineIndex, d.id)
 				o.buf.Delete(o.currentPosition, start-o.currentPosition+1) // Remove the <nodeDelim><Level><nodeDelim> fragment
 			}
 		} else { // Just delete the current position
@@ -503,7 +540,7 @@ func (o *outline) delete() {
 // Enter always creates a new headline at current position at same level as current headline
 func (o *outline) enterPressed() {
 	id := nextHeadlineID(o.headlineIndex)
-	h := &headline{id, o.currentLevel(), true, false}
+	h := &Headline{o.currentLevel(), true, false}
 	o.headlineIndex[id] = h
 	delim := delimiterString(id)
 	o.buf.Insert(o.currentPosition, delim)
@@ -516,12 +553,13 @@ If Tab is hit on the first headline, do nothing.
 */
 func (o *outline) tabPressed(promote bool) {
 	if o.linePtr != 0 {
-		dCurrent, _, _ := o.currentHeadline(o.currentPosition)
+		text := *(o.buf.Runes())
+		dCurrent, _, _ := o.currentHeadline(text, o.currentPosition)
 		//fmt.Printf("dCurrent %d/%d/%d\n", dCurrent.lhs, dCurrent.level, dCurrent.rhs)
-		dPrevious, _, _ := o.previousHeadline(o.currentPosition)
+		dPrevious, _, _ := o.previousHeadline(text, o.currentPosition)
 		//fmt.Printf("dPrevious %d/%d/%d\n", dPrevious.lhs, dPrevious.level, dPrevious.rhs)
-		currentLevel := o.headlineIndex[dCurrent.id].level
-		previousLevel := o.headlineIndex[dPrevious.id].level
+		currentLevel := o.headlineIndex[dCurrent.id].Level
+		previousLevel := o.headlineIndex[dPrevious.id].Level
 		if promote && currentLevel <= previousLevel {
 			o.changeRank(1)
 		} else if !promote && currentLevel > 0 {
@@ -535,20 +573,21 @@ func (o *outline) tabPressed(promote bool) {
 func (o *outline) deleteHeadline() {
 	var s, e, currentStart, start, end int
 	var dCurrent, d *delimiter
-	dCurrent, currentStart, end = o.currentHeadline(o.currentPosition)
-	d, s, e = o.nextHeadline(o.currentPosition)
+	text := *(o.buf.Runes())
+	dCurrent, currentStart, end = o.currentHeadline(text, o.currentPosition)
+	d, s, e = o.nextHeadline(text, o.currentPosition)
 	if o.linePtr != 0 {
-		_, prevStart, _ := o.previousHeadline(o.currentPosition)
+		_, prevStart, _ := o.previousHeadline(text, o.currentPosition)
 		start = dCurrent.lhs
-		for d != nil && o.headlineIndex[d.id].level > o.headlineIndex[dCurrent.id].level {
+		for d != nil && o.headlineIndex[d.id].Level > o.headlineIndex[dCurrent.id].Level {
 			end = e
-			d, s, e = o.nextHeadline(s)
+			d, s, e = o.nextHeadline(text, s)
 		}
 		// Now we should be able to delete start:end-1 from buf
 		extent := end - start
 		o.buf.Delete(start, extent)
 		o.currentPosition = prevStart
-		delete(o.headlineIndex, d.id)
+		delete(o.headlineIndex, dCurrent.id)
 	} else if d == nil { // delete all text in first headline if it's the only one left
 		extent := end - currentStart
 		o.buf.Delete(currentStart, extent)
