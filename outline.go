@@ -473,7 +473,6 @@ func (o *outline) enterPressed() {
 /*
 If Tab is hit on the first headline, do nothing.
     Otherwise if previous headline is <= level as this headline, promote this headline
-	TODO: SOME BUGS WHEN WE GET TO LEVEL 10 GO FIGURE...
 */
 func (o *outline) tabPressed(promote bool) {
 	if o.linePtr != 0 {
@@ -512,4 +511,16 @@ func (o *outline) deleteHeadline() {
 		o.buf.Delete(currentStart, extent)
 		o.currentPosition = 3
 	}
+}
+
+// Collapse the current headline and all children
+//  (this just marks each headline as invisible)
+func (o *outline) collapse() {
+
+}
+
+// Expand the current headline (if necessary) and all children
+//  (this just marks each headline as visible)
+func (o *outline) expand() {
+
 }

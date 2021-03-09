@@ -121,40 +121,39 @@ func layoutHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int
 	}
 	indent := origX + (level * 3)
 	hangingIndent := indent + 3
-	headlineLength := end - start + 1
-	if headlineLength <= o.editorWidth-hangingIndent { // headline fits entirely within a single line
-		o.recordLogicalLine(bullet, indent, hangingIndent, start, headlineLength-1)
-		endY++
-	} else { // going to have to wrap it
-		pos := start
-		firstLine := true
-		for pos < end {
-			endPos := pos + o.editorWidth
-			if endPos > end { // overshot end of text, we're on the last fragment
-				o.recordLogicalLine(0, indent, hangingIndent, pos, end-pos)
-				endPos = end
-				endY++
-			} else { // on first or middle fragment
-				var mybullet rune
-				if firstLine { // if we're laying out first line of a multi-line headline, remember that we want to use a bullet
-					mybullet = bullet
-					firstLine = false
-				}
-				if !unicode.IsSpace((*text)[endPos]) {
-					// Walk backwards until you see your first whitespace
-					p := endPos
-					for p > pos && !unicode.IsSpace((*text)[p]) {
-						p--
-					}
-					if p != pos { // split at the space (hitting pos means beginning of text or last starting point)
-						endPos = p + 1
-					}
-				}
-				o.recordLogicalLine(mybullet, indent, hangingIndent, pos, endPos-pos)
-				endY++
+	pos := start
+	firstLine := true
+	for pos < end {
+		endPos := pos + o.editorWidth
+		if endPos > end { // overshot end of text, we're on the first or last fragment
+			var mybullet rune
+			if firstLine { // if we're laying out first line less than editor width, remember that we want to use a bullet
+				mybullet = bullet
+				firstLine = false
 			}
-			pos = endPos
+			o.recordLogicalLine(mybullet, indent, hangingIndent, pos, end-pos)
+			endPos = end
+			endY++
+		} else { // on first or middle fragment
+			var mybullet rune
+			if firstLine { // if we're laying out first line of a multi-line headline, remember that we want to use a bullet
+				mybullet = bullet
+				firstLine = false
+			}
+			if !unicode.IsSpace((*text)[endPos]) {
+				// Walk backwards until you see your first whitespace
+				p := endPos
+				for p > pos && !unicode.IsSpace((*text)[p]) {
+					p--
+				}
+				if p != pos { // split at the space (hitting pos means beginning of text or last starting point)
+					endPos = p + 1
+				}
+			}
+			o.recordLogicalLine(mybullet, indent, hangingIndent, pos, endPos-pos)
+			endY++
 		}
+		pos = endPos
 	}
 
 	return endY
@@ -280,12 +279,22 @@ func handleEvents(s tcell.Screen, o *outline) {
 			s.Sync()
 			drawScreen(s, o)
 		case *tcell.EventKey:
+			mod := ev.Modifiers()
+			//fmt.Printf("EventKey Modifiers: %d Key: %d Rune: %v", mod, key, ch)
 			switch ev.Key() {
 			case tcell.KeyDown:
-				o.moveDown()
+				if mod == tcell.ModCtrl {
+					o.expand()
+				} else {
+					o.moveDown()
+				}
 				drawScreen(s, o)
 			case tcell.KeyUp:
-				o.moveUp()
+				if mod == tcell.ModCtrl {
+					o.collapse()
+				} else {
+					o.moveUp()
+				}
 				drawScreen(s, o)
 			case tcell.KeyRight:
 				o.moveRight()
