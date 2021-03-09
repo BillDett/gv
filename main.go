@@ -103,7 +103,7 @@ func layoutOutline(s tcell.Screen, o *outline) {
 			fmt.Printf("%v\n", err)
 			break
 		}
-		y = layoutHeadline(s, o, text, start, end+1, y, delim.level, false) // we use end+1 so we render the <nodeDelim>- this gives us something at end of headline to start typing on when appending text to headline
+		y = layoutHeadline(s, o, text, start, end+1, y, o.headlineIndex[delim.id].level, false) // we use end+1 so we render the <nodeDelim>- this gives us something at end of headline to start typing on when appending text to headline
 		delim, start, end = o.nextHeadline(end)
 	}
 }
