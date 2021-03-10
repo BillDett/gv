@@ -91,37 +91,26 @@ func setFileTitle(filename string) {
 func layoutOutline(s tcell.Screen, o *outline) {
 	y := 1
 	o.lineIndex = []line{}
-	text := o.buf.Runes()
-	var start, end int
-	var delim *delimiter
-	var err error
-	delim, start, end = o.nextHeadline(*text, start)
-	//	for end < len(*text)-2 && delim != nil { // Scan thru all headlines (stop before you hit EOL Delim)
-	for delim != nil { // Scan thru all headlines (stop before you hit EOL Delim)
-
-		if err != nil {
-			fmt.Printf("%v\n", err)
-			break
-		}
-		y = layoutHeadline(s, o, text, start, end+1, y, o.headlineIndex[delim.id].Level, false) // we use end+1 so we render the <nodeDelim>- this gives us something at end of headline to start typing on when appending text to headline
-		delim, start, end = o.nextHeadline(*text, end)
+	for _, h := range o.headlines {
+		y = layoutHeadline(s, o, h, 1, y)
 	}
 }
 
-// Format headline according to indent and word-wrap the text.
-func layoutHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int, y int, level int, collapsed bool) int {
+// Format headline text according to indent and word-wrap.  Layout all of its children.
+func layoutHeadline(s tcell.Screen, o *outline, h *Headline, level int, y int) int {
 	origX := 1
-	level++
 	var bullet rune
 	endY := y
-	if collapsed {
-		bullet = solid_bullet
-	} else {
+	if h.Expanded {
 		bullet = vtriangle
+	} else {
+		bullet = solid_bullet
 	}
 	indent := origX + (level * 3)
 	hangingIndent := indent + 3
-	pos := start
+	text := h.Buf.Runes()
+	pos := 0
+	end := len(*text)
 	firstLine := true
 	for pos < end {
 		endPos := pos + o.editorWidth
@@ -131,7 +120,7 @@ func layoutHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int
 				mybullet = bullet
 				firstLine = false
 			}
-			o.recordLogicalLine(mybullet, indent, hangingIndent, pos, end-pos)
+			o.recordLogicalLine(h.ID, mybullet, indent, hangingIndent, pos, end-pos)
 			endPos = end
 			endY++
 		} else { // on first or middle fragment
@@ -150,10 +139,14 @@ func layoutHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int
 					endPos = p + 1
 				}
 			}
-			o.recordLogicalLine(mybullet, indent, hangingIndent, pos, endPos-pos)
+			o.recordLogicalLine(h.ID, mybullet, indent, hangingIndent, pos, endPos-pos)
 			endY++
 		}
 		pos = endPos
+	}
+
+	for _, h := range h.Children {
+		endY = layoutHeadline(s, o, h, level+1, endY)
 	}
 
 	return endY
@@ -161,16 +154,16 @@ func layoutHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int
 
 // Walk thru the lineIndex and render each logical line that is within the window's boundaries
 func renderOutline(s tcell.Screen, o *outline) {
-	runes := *(o.buf.Runes())
 	y := 1
 	lastLine := o.topLine + o.editorHeight - 1
 	for l := o.topLine; l <= lastLine && l < len(o.lineIndex); l++ {
 		x := 0
 		line := o.lineIndex[l]
+		runes := (*o.headlineIndex[line.headlineID].Buf.Runes())
 		s.SetContent(x+line.indent, y, line.bullet, nil, defStyle)
 		for p := line.position; p < line.position+line.length; p++ {
 			// If we're rendering the current position, place cursor here, remember this is current logical line
-			if o.currentPosition == p {
+			if line.headlineID == o.currentHeadlineID && o.currentPosition == p {
 				cursX = line.hangingIndent + x
 				cursY = y
 				o.linePtr = l
@@ -406,7 +399,11 @@ func main() {
 			prompt(s, o, msg)
 		}
 	} else {
-		o.init()
+		err := o.init()
+		if err != nil {
+			msg := fmt.Sprintf("Error initalizing outline: %v", err)
+			prompt(s, o, msg)
+		}
 	}
 
 	//o.test()
