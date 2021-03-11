@@ -185,101 +185,6 @@ func (o *outline) recordLogicalLine(id int, bullet rune, indent int, hangingInde
 }
 
 /*
-// Find position of next nodeDelim (based on direction) from position
-func (o *outline) delim(text []rune, position int, direction int) (int, error) {
-	//text := (*o.buf.Runes())
-	var start int
-	if direction == forward {
-		for start = position; text[start] != nodeDelim && start < len(text); start++ {
-		}
-	} else {
-		for start = position; text[start] != nodeDelim && start > 0; start-- {
-		}
-	}
-	if start == len(text) {
-		return 0, fmt.Errorf("unable to find delimiter from %d in direction %d", position, direction)
-	}
-	return start, nil
-}
-
-// Find the start and end position and numerical value of an integer (based on direction) from position
-//   Position must be sitting on a digit character
-func (o *outline) integer(text []rune, position int, direction int) (int, int, int, error) {
-	//text := (*o.buf.Runes())
-	var start, end, level int
-	if !unicode.IsDigit(text[position]) { // This is an error- we must be on a digit
-		//fmt.Printf("Saw (%#U)\n", text[position])
-		return 0, 0, 0, fmt.Errorf("unable to convert level integer from position %d (%#U)", position, text[position])
-	}
-	if direction == forward {
-		start = position
-		for end = start; unicode.IsDigit(text[end]) && end < len(text); end++ {
-		}
-	} else {
-		end = position
-		for start = end; unicode.IsDigit(text[start]) && start > 0; start-- {
-		}
-	}
-	is := string(text[start+1 : end+1])
-	//fmt.Printf("Converting >%s< to integer\n", is)
-	level, err := strconv.Atoi(is)
-	return start, end, level, err
-}
-
-func (o *outline) test() {
-	text := *(o.buf.Runes())
-	dp1, _ := o.delim(text, 3, backward)
-	dp2, _ := o.delim(text, 3, forward)
-	fmt.Printf("Previous delim %d, Next delim %d\n", dp1+1, dp2+1)
-	d, s, e := o.currentHeadline(text, o.currentPosition)
-	fmt.Printf("Current Headline delim %d/%d/%d, start %d, end %d\n", d.lhs+1, d.id, d.rhs+1, s+1, e+1)
-	d, s, e = o.nextHeadline(text, o.currentPosition)
-	var last int
-	c := 0
-	var d2 *delimiter
-	for d != nil {
-		if c == 2 {
-			d2 = d
-		}
-		fmt.Printf("Next Headline delim %d/%d/%d, start %d, end %d\n", d.lhs+1, d.id, d.rhs+1, s+1, e+1)
-		d, s, e = o.nextHeadline(text, s)
-		if e > last {
-			last = s
-		}
-		c++
-	}
-	d, s, e = o.nextHeadline(text, 10)
-	if d != nil {
-		fmt.Printf("Second Headline delim %d/%d/%d, start %d, end %d\n", d.lhs+1, d.id, d.rhs+1, s+1, e+1)
-	}
-	fmt.Printf("d2 delim %d/%d/%d\n", d.lhs+1, d.id, d.rhs+1)
-	o.setLevel(d2, 5)
-	d2, s2, e2 := o.currentHeadline(text, d2.rhs+1)
-	fmt.Printf("now d2 delim %d/%d/%d, start %d, end %d\n", d2.lhs+1, d2.id, d2.rhs+1, s2+1, e2+1)
-}
-
-
-// Get positional information for headline under o.currentPosition
-// Walk backwards from current positon until you find the leading <nodeDelim> and then extract the id to get the level from the headlineIndex
-// TODO: CONVERT TO USE TOKENIZER METHODS INSTEAD
-func (o *outline) currentLevel() int {
-	text := (*o.buf.Runes())
-	var begin, rhs, start int
-	if text[o.currentPosition] == nodeDelim { // "back up" if we're sitting on a trailing <nodeDelim> at end of a line
-		begin = o.currentPosition - 1
-	} else {
-		begin = o.currentPosition
-	}
-	// find right hand nodeDelim
-	for rhs = begin; text[rhs] != nodeDelim; rhs-- {
-	}
-	// extract the id
-	for start = rhs - 1; text[start] != nodeDelim; start-- {
-	}
-	id, _ := strconv.Atoi(string(text[start+1 : rhs]))
-	return o.headlineIndex[id].Level
-}
-*/
 
 // Get the current Headline
 func (o *outline) currentHeadline() *Headline {
@@ -298,7 +203,6 @@ func (o *outline) previousHeadline() *Headline {
 	return nil
 }
 
-/*
 // Adjust the level of current outline by adding difference and adjust all subsequent "child" headlines.
 // We determine when we are finished finding children when there are no more headlines or next headline's level > this headline
 func (o *outline) changeRank(difference int) {
@@ -338,35 +242,92 @@ func (o *outline) setLevel(d *delimiter, newLevel int) int {
 }
 */
 
-func (o *outline) moveRight() {
-	o.currentPosition++
-	/*
-		if o.currentPosition < o.buf.lastpos-1 {
-			text := *(o.buf.Runes())
-			if text[o.currentPosition] == nodeDelim {
-				peek := o.currentPosition + 1
-				if text[peek] != eof {
-					// at last character of current headline, move to beginning of next headline
-					_, o.currentPosition, _ = o.nextHeadline(text, o.currentPosition)
-				}
-			} else {
-				// Just move to next character in this headline
-				o.currentPosition++
-			}
-			// Scroll?
-			//   see if we've moved into next logical line
-			newPtr := o.linePtr + 1
-			if newPtr < len(o.lineIndex) {
-				if o.currentPosition >= o.lineIndex[newPtr].position && o.linePtr-o.topLine+1 >= o.editorHeight {
-					// If we've 'moved' to next logical line and at bottom row of window
-					o.topLine++
-				}
-			}
+// Return the IDs of the Headlines just before and after the Headline at given ID.  Return -1 for either if at beginning or end of outline.
+// We leverage the fact that o.lineIndex is really a 'flattened' DFS list of Headlines, so it has the ordered list of Headlines
+func (o *outline) prevNextFrom(ID int) (int, int) {
+	previous := -1
+	next := -1
+	// generate list of ordered, unique headline IDs from o.lineIndex
+	var headlines []int
+	for _, l := range o.lineIndex {
+		if len(headlines) == 0 || headlines[len(headlines)-1] != l.headlineID {
+			headlines = append(headlines, l.headlineID)
 		}
-	*/
+	}
+
+	// now find previous and next
+	for c, i := range headlines {
+		if i == ID {
+			if c < len(headlines)-1 {
+				next = headlines[c+1]
+			}
+			if c > 0 {
+				previous = headlines[c-1]
+			}
+			break
+		}
+	}
+
+	return previous, next
 }
 
-// TODO: We can probably simplify this a bit removing o.buf.Runes and loop skipping over delims
+// Find the "next" Headline after the Headline with ID.  Return nil if no more Headlines are next.
+func (o *outline) nextHeadline(ID int) *Headline {
+	if ID == -1 {
+		return nil
+	}
+	_, n := o.prevNextFrom(ID)
+	if n == -1 {
+		return nil
+	}
+	return o.headlineIndex[n]
+}
+
+// Find the "previous" Headline befoire the Headline with ID.  Return nil if no more Headlines are prior.
+func (o *outline) previousHeadline(ID int) *Headline {
+	if ID == -1 {
+		return nil
+	}
+	p, _ := o.prevNextFrom(ID)
+	if p == -1 {
+		return nil
+	}
+	return o.headlineIndex[p]
+}
+
+// Find the "current" Headline
+func (o *outline) currentHeadline() *Headline {
+	return o.headlineIndex[o.currentHeadlineID]
+}
+
+func (o *outline) moveRight() {
+	previousHeadlineID := o.currentHeadlineID
+	if o.currentPosition < o.headlineIndex[o.currentHeadlineID].Buf.lastpos-1 { // are we within the text of current Headline?
+		o.currentPosition++
+	} else { // move to the first character of next Headline (if one exists)
+		h := o.nextHeadline(o.currentHeadlineID)
+		if h != nil {
+			o.currentHeadlineID = h.ID
+			o.currentPosition = 0
+		} else { // no more Headlines
+			return
+		}
+	}
+	// Do we need to scroll?
+	newPtr := o.linePtr + 1
+	if newPtr < len(o.lineIndex) { // we have additional logical lines beneath us
+		if o.linePtr-o.topLine+1 >= o.editorHeight { // we are on last row of editor window
+			if o.currentHeadlineID == previousHeadlineID { // we are on same Headline
+				if o.currentPosition >= o.lineIndex[newPtr].position { // We've 'moved' to next logical line
+					o.topLine++
+				}
+			} else { // We moved to a new headline, so is must be a new logical line
+				o.topLine++
+			}
+		}
+	}
+}
+
 func (o *outline) moveLeft() {
 	/*
 		if o.currentPosition > 3 { // Do nothing if on first character of first headline
