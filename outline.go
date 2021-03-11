@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 
@@ -47,38 +48,7 @@ type line struct {
 	length        int  // How many runes in this "line"
 }
 
-/*
-// a delimiter is a multi-rune token that separates each headline, indicating its level in the hierarchy
-// these are created by scanning the outline.buf runes
-type delimiter struct {
-	lhs int // position of nodeDelim on left
-	//level int // level of headline
-	id  int // identifier for headline
-	rhs int // position of nodeDelim on right
-}
-
-// for tokenization
-const (
-	forward = iota
-	backward
-)
-*/
-
-/*
- Outline structure takes the following form:
- 	<headlineIndex><nodeDelim><id><nodeDelim><headline><nodeDelim><id><nodeDelim><headline>...<nodeDelim><EOF>
-
-<headlineIndex> is a map of Headline metadata in JSON format.
- Headline order denotes tree structure.  <id> is the unique id of the headline.   Tree is
- denoted by an increasing headline.level value in consecutive headlines.  Once headline.level is
- found to be less than previous headline.level, we have just seen a leaf node.
-
- The end of the outline is denoted by <nodeDelim><EOL>- this allows us to always append text to
- a headline by placing the o.currentPosition on the <nodeDelim> right after the headline for insertion.
-
-*/
 const nodeDelim = '\ufeff'
-const eof = '\u0000'
 
 const emptyHeadlineText = string(nodeDelim) // every Headline's text ends with a nonprinting rune so we can append to it easily
 
@@ -91,10 +61,6 @@ var cursY int       // Y coordinate of the cursor
 var dbg int
 var dbg2 int
 
-func delimiterString(level int) string {
-	return fmt.Sprintf("%c%d%c", nodeDelim, level, nodeDelim)
-}
-
 func newOutline(s tcell.Screen) *outline {
 	o := &outline{[]*Headline{}, make(map[int]*Headline), nil, 0, 0, 0, 0, 0, 0}
 	o.setScreenSize(s)
@@ -103,23 +69,9 @@ func newOutline(s tcell.Screen) *outline {
 
 // initialize a new outline to be used as a blank outline for editing
 func (o *outline) init() error {
-	id, err := o.addHeadline("hello world!", -1)
-	if err != nil {
-		return err
-	}
+	id, _ := o.addHeadline("", -1)
 	o.currentHeadlineID = id
-	_, err = o.addHeadline("fooy", -1)
-	if err != nil {
-		return err
-	}
-	_, err = o.addHeadline("bar", -1)
-	if err != nil {
-		return err
-	}
-	_, err = o.addHeadline("child", o.currentHeadlineID)
-	if err != nil {
-		return err
-	}
+	o.currentPosition = 0
 	return nil
 }
 
@@ -139,63 +91,56 @@ func (h *Headline) toString(level int) string {
 }
 
 func (o *outline) dump() {
+	text := (*o.headlineIndex[o.currentHeadlineID].Buf.Runes())
 	out := "Headlines\n"
 	for _, h := range o.headlines {
 		out += h.toString(0) + "\n"
 	}
-	out += fmt.Sprintf("\ncurrentHeadline %d, currentPosition %d, num Headlines %d, dbg %d, dbg2 %d\n",
-		o.currentHeadlineID, o.currentPosition, len(o.headlineIndex), dbg, dbg2)
+	out += fmt.Sprintf("\ncurrentHeadline %d, currentPosition %d, current Rune (%#U) num Headlines %d, dbg %d, dbg2 %d\n",
+		o.currentHeadlineID, o.currentPosition, text[o.currentPosition], len(o.headlineIndex), dbg, dbg2)
 	ioutil.WriteFile("dump.txt", []byte(out), 0644)
 }
 
 // save the outline buffer to a file
 func (o *outline) save(filename string) error {
-	/*
-		var buf []byte
-		b, err := json.Marshal(o.headlineIndex)
-		if err != nil {
-			return err
-		}
-		buf = append(buf, b...)
-		buf = append(buf, []byte(o.buf.Text())...)
-		ioutil.WriteFile(filename, buf, 0644)
-	*/
+	buf, err := json.Marshal(o.headlines)
+	if err != nil {
+		return err
+	}
+	ioutil.WriteFile(filename, buf, 0644)
 	return nil
 }
 
 // load a .gv file and use it to populate the outline's buffer
-// TODO: Not working
 func (o *outline) load(filename string) error {
-	/*
-		buf, err := ioutil.ReadFile(filename)
-		if err != nil {
-			return err
-		}
-		// Extract the index JSON
-		runes := []rune(string(buf))
-		var r rune
-		var c int
-		for c, r = range runes {
-			if r == nodeDelim {
-				break
-			}
-		}
-		fmt.Printf("C is %d\n", c)
-		if c != 0 && c != len(runes) {
-			index := []byte(string(runes[:c-1]))
-			fmt.Printf("Index: >%s<\n", index)
-			err = json.Unmarshal(index, &o.headlineIndex)
-			if err != nil {
-				return err
-			}
-			// Add in the headline text
-			o.buf.InsertRunes(0, runes[c:])
-			return nil
-		} else {
-			return fmt.Errorf("Error: unreadable file %s", filename)
-		}
-	*/
+	buf, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	// Extract the outline JSON
+	err = json.Unmarshal(buf, &o.headlines)
+	if err != nil {
+		return err
+	}
+	if len(o.headlines) == 0 {
+		return fmt.Errorf("Error: did not read any headlines from the input file")
+	}
+	// (Re)build the headlineIndex
+	o.headlineIndex = make(map[int]*Headline)
+	for _, h := range o.headlines {
+		o.addHeadlineToIndex(h)
+	}
+	o.currentHeadlineID = o.headlines[0].ID
+	o.currentPosition = 0
 	return nil
+}
+
+// Add a Headline (and all of its children) into the o.headlineIndex
+func (o *outline) addHeadlineToIndex(h *Headline) {
+	o.headlineIndex[h.ID] = h
+	for _, c := range h.Children {
+		o.addHeadlineToIndex(c)
+	}
 }
 
 func (o *outline) setScreenSize(s tcell.Screen) {
@@ -208,8 +153,8 @@ func (o *outline) setScreenSize(s tcell.Screen) {
 // appends a new headline onto the outline under the parent
 func (o *outline) addHeadline(text string, parent int) (int, error) {
 	id := nextHeadlineID(o.headlineIndex)
-	h := Headline{id, parent, true, *NewPieceTable(text), []*Headline{}}
-	if parent == -1 { // Is this a top-level headline?
+	h := Headline{id, parent, true, *NewPieceTable(text + emptyHeadlineText), []*Headline{}} // Note we're adding extra non-printing char to end of text
+	if parent == -1 {                                                                        // Is this a top-level headline?
 		o.headlines = append(o.headlines, &h)
 	} else {
 		p, found := o.headlineIndex[parent]
