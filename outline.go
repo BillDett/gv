@@ -184,64 +184,6 @@ func (o *outline) recordLogicalLine(id int, bullet rune, indent int, hangingInde
 	o.lineIndex = append(o.lineIndex, line{id, bullet, indent, hangingIndent, position, length})
 }
 
-/*
-
-// Get the current Headline
-func (o *outline) currentHeadline() *Headline {
-	return o.headlineIndex[o.currentHeadlineID]
-}
-
-// Get "next" headline in a Depth-first approach based upon current Headline
-//  Return first child.  If no children, return sibling.  If no sibling, get parent's sibling.  If at top level, return nil
-//  Return nil if no next Headline
-func (o *outline) nextHeadline() *Headline {
-	return nil
-}
-
-// Get "previous" headline in tree
-func (o *outline) previousHeadline() *Headline {
-	return nil
-}
-
-// Adjust the level of current outline by adding difference and adjust all subsequent "child" headlines.
-// We determine when we are finished finding children when there are no more headlines or next headline's level > this headline
-func (o *outline) changeRank(difference int) {
-	text := *(o.buf.Runes())
-	d, _, _ := o.currentHeadline(text, o.currentPosition)
-	//fmt.Printf("current delim %d/%d/%d\n", d.lhs, d.level, d.rhs)
-	origLevel := o.headlineIndex[d.id].Level
-	o.setLevel(d, origLevel+difference)
-	// add the difference to all children
-	var s int
-	d, s, _ = o.nextHeadline(text, o.currentPosition)
-	if d != nil {
-		dl := o.headlineIndex[d.id].Level
-		for d != nil && dl > origLevel {
-			//fmt.Printf("next delim %d/%d/%d\n", d.lhs, d.level, d.rhs)
-			offset := o.setLevel(d, dl+difference)
-			d, s, _ = o.nextHeadline(text, s+offset)
-		}
-	}
-}
-*/
-// Modify the level in the buffer for this delimiter (replace characters for the integer)
-// Return the # of runes that we have adjusted the buffer (add/remove) based on size of newLevel compared to d.level
-
-// TODO: REMOVE THE RETURN VALUE- NOT NEEDED SINCE LEVEL IS NO LONGER IN BUFFER
-/*
-func (o *outline) setLevel(d *delimiter, newLevel int) int {
-	//newLevelStr := strconv.FormatInt(int64(newLevel), 10)
-	//newLevelLen := len(newLevelStr)
-	levelLen := d.rhs - d.lhs - 1
-	//fmt.Printf("Update >%d< with new level %d\n", d.level, newLevel)
-	//o.buf.Delete(d.lhs+1, levelLen)
-	//o.buf.Insert(d.lhs+1, newLevelStr)
-	o.headlineIndex[d.id].Level = newLevel
-	//return newLevelLen - levelLen // Did we add or remove runes to the buffer with this change of level?
-	return levelLen
-}
-*/
-
 // Return the IDs of the Headlines just before and after the Headline at given ID.  Return -1 for either if at beginning or end of outline.
 // We leverage the fact that o.lineIndex is really a 'flattened' DFS list of Headlines, so it has the ordered list of Headlines
 func (o *outline) prevNextFrom(ID int) (int, int) {
@@ -404,26 +346,19 @@ func (o *outline) insertRuneAtCurrentPosition(r rune) {
 }
 
 func (o *outline) backspace() {
-	/*
-		if o.currentPosition > 3 {
-			text := *(o.buf.Runes())
+	if o.currentPosition == 0 && o.linePtr == 0 { // Do nothing if on first character of first headline
+		return
+	} else {
+		if o.currentPosition > 0 { // Remove previous character
 			posToRemove := o.currentPosition - 1
-			if text[posToRemove] == nodeDelim { // Are we trying to join with previous headline?
-				if posToRemove != 2 { // Make sure we're not on first headline
-					var start int
-					for start = posToRemove - 1; text[start] != nodeDelim; start-- { // find start/end of the nodeDelims
-					}
-					d, _, _ := o.currentHeadline(text, o.currentPosition)
-					delete(o.headlineIndex, d.id)
-					o.buf.Delete(start, posToRemove-start+1) // Remove the <nodeDelim><Level><nodeDelim> fragment
-				}
-			} else {
-				o.moveLeft()
-				o.buf.Delete(o.currentPosition, 1)
-			}
-			o.dump()
+			o.currentHeadline().Buf.Delete(posToRemove, 1)
+			o.moveLeft()
+		} else { // Join this headline with previous one
+
+			//delete(o.headlineIndex, d.id)
+
 		}
-	*/
+	}
 }
 
 // TODO: This is pretty clunky when we join headlines- we can streamline this code a lot
