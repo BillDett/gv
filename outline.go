@@ -93,11 +93,11 @@ func (h *Headline) toString(level int) string {
 func (o *outline) dump() {
 	text := (*o.headlineIndex[o.currentHeadlineID].Buf.Runes())
 	out := "Headlines\n"
-	for _, h := range o.headlines {
-		out += h.toString(0) + "\n"
-	}
-	out += fmt.Sprintf("\ncurrentHeadline %d, currentPosition %d, current Rune (%#U) num Headlines %d, dbg %d, dbg2 %d\n",
-		o.currentHeadlineID, o.currentPosition, text[o.currentPosition], len(o.headlineIndex), dbg, dbg2)
+	//for _, h := range o.headlines {
+	//	out += h.toString(0) + "\n"
+	//}
+	out += fmt.Sprintf("\nlinePtr %d, currentHeadline %d, currentPosition %d, current Rune (%#U) num Headlines %d, dbg %d, dbg2 %d\n",
+		o.linePtr, o.currentHeadlineID, o.currentPosition, text[o.currentPosition], len(o.headlineIndex), dbg, dbg2)
 	ioutil.WriteFile("dump.txt", []byte(out), 0644)
 }
 
@@ -329,77 +329,72 @@ func (o *outline) moveRight() {
 }
 
 func (o *outline) moveLeft() {
-	/*
-		if o.currentPosition > 3 { // Do nothing if on first character of first headline
-			text := *(o.buf.Runes())
-			if text[o.currentPosition-1] == nodeDelim {
-				// at first character of current headline, move to end of previous headline
-				// We want to land on the <nodeDelim> just prior to this headline so we are on an append point for new text
-				o.currentPosition -= 2
-				for text[o.currentPosition] != nodeDelim {
-					o.currentPosition--
-				}
-			} else { // Just move to previous character in this headline
-				o.currentPosition--
+	if o.currentPosition == 0 && o.linePtr == 0 { // Do nothing if on first character of first headline
+		return
+	} else {
+		previousHeadlineID := o.currentHeadlineID
+		if o.currentPosition > 0 { // Just move to previous character in this headline
+			o.currentPosition--
+		} else { // at first character of current headline, move to end of previous headline
+			p := o.previousHeadline(o.currentHeadlineID)
+			if p != nil {
+				o.currentHeadlineID = p.ID
+				o.currentPosition = p.Buf.lastpos - 1
 			}
-			// Scroll?
-			//   see if we've moved into previous logical line
-			newPtr := o.linePtr - 1
-			if newPtr >= 0 {
-				previousLastPosition := o.lineIndex[newPtr].position + o.lineIndex[newPtr].length - 1
-				if o.currentPosition <= previousLastPosition && o.linePtr-o.topLine+1 == 1 {
-					// If we've 'moved' to previous logical line and at top row of window
+		}
+		// Do we need to scroll?
+		newPtr := o.linePtr - 1
+		if newPtr >= 0 {
+			if o.linePtr-o.topLine+1 == 1 { // we are on first row of editor window
+				if o.currentHeadlineID == previousHeadlineID { // we are on same Headline
+					if o.currentPosition <= o.lineIndex[newPtr].position+o.lineIndex[newPtr].length { // We've 'moved' to previous logical line
+						o.topLine--
+					}
+				} else { // We moved to a new headline, so is must be a new logical line
 					o.topLine--
 				}
 			}
-
 		}
-	*/
+	}
 }
 
 func (o *outline) moveDown() {
-	/*
-		if o.currentPosition < o.buf.lastpos-1 {
-			if o.linePtr != len(o.lineIndex)-1 { // Make sure we're not on last line
-				offset := o.currentPosition - o.lineIndex[o.linePtr].position // how far 'in' are we on the logical line?
-				dbg = offset
-				newLinePtr := o.linePtr + 1
-				if newLinePtr < len(o.lineIndex) { // There are more lines below us
-					dbg2 = o.lineIndex[newLinePtr].length
-					if offset >= o.lineIndex[newLinePtr].length { // Are we moving down to a smaller line with x too far right?
-						o.currentPosition = o.lineIndex[newLinePtr].position + o.lineIndex[newLinePtr].length - 1
-					} else {
-						o.currentPosition = offset + o.lineIndex[newLinePtr].position
-					}
-				}
-				// Scroll?
-				if o.linePtr-o.topLine+1 >= o.editorHeight {
-					o.topLine++
-				}
+	if o.linePtr != len(o.lineIndex)-1 { // Make sure we're not on last line
+		offset := o.currentPosition - o.lineIndex[o.linePtr].position // how far 'in' are we on the logical line?
+		dbg = offset
+		newLinePtr := o.linePtr + 1
+		if newLinePtr < len(o.lineIndex) { // There are more lines below us
+			if offset >= o.lineIndex[newLinePtr].length { // Are we moving down to a smaller line with x too far right?
+				o.currentPosition = o.lineIndex[newLinePtr].position + o.lineIndex[newLinePtr].length - 1
+			} else {
+				o.currentPosition = offset + o.lineIndex[newLinePtr].position
 			}
+			o.currentHeadlineID = o.lineIndex[newLinePtr].headlineID // pick up this logical line's headlineID just in case we move to a new Headline
 		}
-	*/
+		// Scroll?
+		if o.linePtr-o.topLine+1 >= o.editorHeight {
+			o.topLine++
+		}
+	}
 }
 
 func (o *outline) moveUp() {
-	/*
-		if o.currentPosition > 3 { // Do nothing if on first character of first headline
-			offset := o.currentPosition - o.lineIndex[o.linePtr].position // how far 'in' are we on the logical line?
-			newLinePtr := o.linePtr - 1
-			if newLinePtr >= 0 { // There are more lines above
-				dbg2 = o.lineIndex[newLinePtr].length
-				if offset >= o.lineIndex[newLinePtr].length { // Are we moving up to a smaller line with x too far right?
-					o.currentPosition = o.lineIndex[newLinePtr].position + o.lineIndex[newLinePtr].length - 1
-				} else {
-					o.currentPosition = offset + o.lineIndex[newLinePtr].position
-				}
+	if o.linePtr != 0 { // Do nothing if on first logical line
+		offset := o.currentPosition - o.lineIndex[o.linePtr].position // how far 'in' are we on the logical line?
+		newLinePtr := o.linePtr - 1
+		if newLinePtr >= 0 { // There are more lines above
+			if offset >= o.lineIndex[newLinePtr].length { // Are we moving up to a smaller line with x too far right?
+				o.currentPosition = o.lineIndex[newLinePtr].position + o.lineIndex[newLinePtr].length - 1
+			} else {
+				o.currentPosition = offset + o.lineIndex[newLinePtr].position
 			}
-			// Scroll?
-			if o.linePtr != 0 && o.linePtr-o.topLine+1 == 1 {
-				o.topLine--
-			}
+			o.currentHeadlineID = o.lineIndex[newLinePtr].headlineID // pick up this logical line's headlineID just in case we move to a new Headline
 		}
-	*/
+		// Scroll?
+		if o.linePtr != 0 && o.linePtr-o.topLine+1 == 1 {
+			o.topLine--
+		}
+	}
 }
 
 func (o *outline) insertRuneAtCurrentPosition(r rune) {
