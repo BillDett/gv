@@ -92,10 +92,11 @@ func (h *Headline) toString(level int) string {
 
 func (o *outline) dump() {
 	text := (*o.headlineIndex[o.currentHeadlineID].Buf.Runes())
-	out := "Headlines\n"
-	//for _, h := range o.headlines {
-	//	out += h.toString(0) + "\n"
-	//}
+	out := "Headline and children\n"
+	//i, c := o.childrenSliceFor(13)
+	for _, h := range o.headlines {
+		out += h.toString(0) + "\n"
+	}
 	out += fmt.Sprintf("\nlinePtr %d, currentHeadline %d, currentPosition %d, current Rune (%#U) num Headlines %d, dbg %d, dbg2 %d\n",
 		o.linePtr, o.currentHeadlineID, o.currentPosition, text[o.currentPosition], len(o.headlineIndex), dbg, dbg2)
 	ioutil.WriteFile("dump.txt", []byte(out), 0644)
@@ -150,21 +151,25 @@ func (o *outline) setScreenSize(s tcell.Screen) {
 	o.editorHeight = height - 3 // 2 rows for border, 1 row for interaction
 }
 
+func (o *outline) newHeadline(text string, parent int) *Headline {
+	id := nextHeadlineID(o.headlineIndex)
+	return &Headline{id, parent, true, *NewPieceTable(text + emptyHeadlineText), []*Headline{}} // Note we're adding extra non-printing char to end of text
+}
+
 // appends a new headline onto the outline under the parent
 func (o *outline) addHeadline(text string, parent int) (int, error) {
-	id := nextHeadlineID(o.headlineIndex)
-	h := Headline{id, parent, true, *NewPieceTable(text + emptyHeadlineText), []*Headline{}} // Note we're adding extra non-printing char to end of text
-	if parent == -1 {                                                                        // Is this a top-level headline?
-		o.headlines = append(o.headlines, &h)
+	h := o.newHeadline(text, parent)
+	if parent == -1 { // Is this a top-level headline?
+		o.headlines = append(o.headlines, h)
 	} else {
 		p, found := o.headlineIndex[parent]
 		if !found {
 			return -1, fmt.Errorf("Unable to append headline to parent %d", parent)
 		}
-		p.Children = append(p.Children, &h)
+		p.Children = append(p.Children, h)
 	}
-	o.headlineIndex[id] = &h
-	return id, nil
+	o.headlineIndex[h.ID] = h
+	return h.ID, nil
 }
 
 // utility to get the next Headline id based on maximum key value in headlineIndex
@@ -211,6 +216,27 @@ func (o *outline) prevNextFrom(ID int) (int, int) {
 	}
 
 	return previous, next
+}
+
+// Look up the index in the []*Headline where this Headline is being managed by its parent
+func (o *outline) childrenSliceFor(ID int) (int, *[]*Headline) {
+	index := -1
+	var children *[]*Headline
+	h := o.headlineIndex[ID]
+	if h != nil {
+		if h.ParentID == -1 {
+			children = &o.headlines
+		} else {
+			children = &o.headlineIndex[h.ParentID].Children
+		}
+		for i, c := range *children {
+			if c.ID == ID {
+				index = i
+				break
+			}
+		}
+	}
+	return index, children
 }
 
 // Find the "next" Headline after the Headline with ID.  Return nil if no more Headlines are next.
@@ -349,44 +375,88 @@ func (o *outline) backspace() {
 	if o.currentPosition == 0 && o.linePtr == 0 { // Do nothing if on first character of first headline
 		return
 	} else {
+		currentHeadline := o.currentHeadline()
 		if o.currentPosition > 0 { // Remove previous character
 			posToRemove := o.currentPosition - 1
-			o.currentHeadline().Buf.Delete(posToRemove, 1)
+			currentHeadline.Buf.Delete(posToRemove, 1)
 			o.moveLeft()
 		} else { // Join this headline with previous one
+			/*
+				TODO: Need to think this thru- getting pretty convoluted
 
-			//delete(o.headlineIndex, d.id)
-
+				previousHeadline := o.previousHeadline(currentHeadline.ID)
+				if previousHeadline != nil {
+					o.currentPosition = previousHeadline.Buf.lastpos - 1
+					previousHeadline.Buf.Append(currentHeadline.Buf.Text())
+					// Tidy up the parent's children slice
+					var children []*Headline
+					if currentHeadline.ParentID != -1 {
+						children = o.headlineIndex[currentHeadline.ParentID].Children
+					} else {
+						children = o.headlines
+					}
+					for c := range(children) {
+						if children[c].ID == currentHeadline.ID {
+							break
+						}
+					}
+					o.currentHeadlineID = previousHeadline.ID
+					delete(o.headlineIndex, currentHeadline.ID)
+				}
+			*/
 		}
 	}
 }
 
-// TODO: This is pretty clunky when we join headlines- we can streamline this code a lot
 func (o *outline) delete() {
-	/*
-		if o.buf.lastpos > 2 {
-			text := *(o.buf.Runes())
-			if text[o.currentPosition] == nodeDelim { // Are we trying to join the next headline?
-				if o.currentPosition != o.buf.lastpos-2 { // Make sure we're not on <nodeDelim> after last headline
-					var start int
-					for start = o.currentPosition + 1; text[start] != nodeDelim; start++ { // find start/end of the nodeDelims
-					}
-					d, _, _ := o.nextHeadline(text, o.currentPosition)
-					delete(o.headlineIndex, d.id)
-					o.buf.Delete(o.currentPosition, start-o.currentPosition+1) // Remove the <nodeDelim><Level><nodeDelim> fragment
-				}
-			} else { // Just delete the current position
-				o.buf.Delete(o.currentPosition, 1)
-			}
-		}
-	*/
+	currentHeadline := o.currentHeadline()
+	if o.currentPosition != currentHeadline.Buf.lastpos-1 { // Just delete the current position
+		currentHeadline.Buf.Delete(o.currentPosition, 1)
+	} else { // Join the next Headline onto this one
+		// TODO
+	}
 }
 
-// Enter always creates a new headline at current position at same level as current headline
+/*
+Enter always creates a new headline at current position at same level as current headline
+
+Split the current Headline's text at the cursor point.  Put all text from cursor to end into a
+new Headline that is the next sibling of current Headline.
+*/
 func (o *outline) enterPressed() {
-	h := o.currentHeadline()
-	o.addHeadline("", h.ParentID)
-	o.moveRight()
+
+	// "Split" current Headline at cursor position and create a new Headline with remaining text
+	currentHeadline := o.currentHeadline()
+	text := (*currentHeadline.Buf.Runes())
+	newText := text[o.currentPosition : len(text)-1] // Extract remaining text (except trailing nodeDelim)
+	currentHeadline.Buf.Delete(o.currentPosition, len(newText))
+	newHeadline := o.newHeadline(string(newText), currentHeadline.ParentID)
+
+	// Where to put the new Headline?  If we have children, make it first child.  Otherwise it should
+	//  be our next sibling.
+	if len(currentHeadline.Children) == 0 {
+		// Insert the new headline as next sibling after current Headline
+		idx, children := o.childrenSliceFor(currentHeadline.ID)
+		insertSibling(children, idx+1, newHeadline)
+	} else {
+		newHeadline.ParentID = currentHeadline.ID
+		insertSibling(&currentHeadline.Children, 0, newHeadline)
+	}
+
+	// Update the o.headlinesIndex
+	o.headlineIndex[newHeadline.ID] = newHeadline
+	o.currentHeadlineID = newHeadline.ID
+	o.currentPosition = 0
+
+}
+
+// Insert a Headline into a children slice at the given index
+//  Updates the provided slice of Headlines
+// 0 <= index <= len(children)
+func insertSibling(children *[]*Headline, index int, value *Headline) { //*[]*Headline {
+	*children = append(*children, nil)
+	copy((*children)[index+1:], (*children)[index:])
+	(*children)[index] = value
 }
 
 /*
