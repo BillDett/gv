@@ -308,10 +308,10 @@ func handleEvents(s tcell.Screen, o *outline) {
 				o.enterPressed()
 				drawScreen(s, o)
 			case tcell.KeyTab:
-				o.tabPressed(true)
+				o.tabPressed()
 				drawScreen(s, o)
 			case tcell.KeyBacktab:
-				o.tabPressed(false)
+				o.backTabPressed()
 				drawScreen(s, o)
 			case tcell.KeyRune:
 				dirty = true

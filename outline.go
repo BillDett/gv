@@ -459,27 +459,75 @@ func insertSibling(children *[]*Headline, index int, value *Headline) { //*[]*He
 	(*children)[index] = value
 }
 
+// Find childID in list of children, remove it from the list
+func (o *outline) removeChildFrom(children *[]*Headline, childID int) {
+	var i int
+	var c *Headline
+	for i, c = range *children {
+		if c.ID == childID {
+			break
+		}
+	}
+	if i == len(*children) { // We didn't find this childID
+		fmt.Printf("Hm- was asked to remove child %d from list %v but didn't find it", childID, *children)
+		return
+	}
+	// Remove the child
+	s := children
+	copy((*s)[i:], (*s)[i+1:]) // Shift s[i+1:] left one index.
+	(*s)[len(*s)-1] = nil      // Erase last element (write zero value).
+	*s = (*s)[:len(*s)-1]      // Truncate slice.
+}
+
 /*
-If Tab is hit on the first headline, do nothing.
-    Otherwise if previous headline is <= level as this headline, promote this headline
+ Promote a Headline further down the outline one level
 */
-func (o *outline) tabPressed(promote bool) {
-	/*
-		if o.linePtr != 0 {
-			text := *(o.buf.Runes())
-			dCurrent, _, _ := o.currentHeadline(text, o.currentPosition)
-			//fmt.Printf("dCurrent %d/%d/%d\n", dCurrent.lhs, dCurrent.level, dCurrent.rhs)
-			dPrevious, _, _ := o.previousHeadline(text, o.currentPosition)
-			//fmt.Printf("dPrevious %d/%d/%d\n", dPrevious.lhs, dPrevious.level, dPrevious.rhs)
-			currentLevel := o.headlineIndex[dCurrent.id].Level
-			previousLevel := o.headlineIndex[dPrevious.id].Level
-			if promote && currentLevel <= previousLevel {
-				o.changeRank(1)
-			} else if !promote && currentLevel > 0 {
-				o.changeRank(-1)
+func (o *outline) tabPressed() {
+	if o.linePtr != 0 {
+		currentHeadline := o.currentHeadline()
+		previousHeadline := o.previousHeadline(o.currentHeadlineID)
+		if currentHeadline.ParentID != previousHeadline.ID { // Are we already "promoted"?
+			idx, children := o.childrenSliceFor(currentHeadline.ID)
+			o.removeChildFrom(children, currentHeadline.ID)
+			if previousHeadline.ParentID == currentHeadline.ParentID { // this means previous Headline has no children
+				// we need to become first child of previous Headline
+				insertSibling(&previousHeadline.Children, 0, currentHeadline)
+				currentHeadline.ParentID = previousHeadline.ID
+			} else { // we need to become the last child of previous sibling
+				previousSibling := (*children)[idx-1]
+				insertSibling(&previousSibling.Children, len(previousSibling.Children), currentHeadline)
+				currentHeadline.ParentID = previousSibling.ID
 			}
 		}
-	*/
+	}
+}
+
+/*
+  "Demote" a Headline back up the outline one level
+*/
+func (o *outline) backTabPressed() {
+	if o.linePtr != 0 {
+		currentHeadline := o.currentHeadline()
+		//previousHeadline := o.previousHeadline(o.currentHeadlineID)
+		if currentHeadline.ParentID != -1 { // it is possible to demote us
+			// any siblings after us in my parent's chlidren list should be added to end of my list of children
+			idx, children := o.childrenSliceFor(currentHeadline.ID)
+			if len(*children) > 1 { // we have siblings after us, move them to be our children
+				for c := idx + 1; c < len(*children); c++ {
+					insertSibling(&currentHeadline.Children,
+						len(currentHeadline.Children), (*children)[c]) // add to end of my children list
+					(*children)[c].ParentID = currentHeadline.ID
+					o.removeChildFrom(children, (*children)[c].ID) // remove from my parent
+				}
+			}
+			// make me the next sibling of my parent
+			parentHeadline := o.headlineIndex[currentHeadline.ParentID]
+			idx, children = o.childrenSliceFor(parentHeadline.ID)
+			o.removeChildFrom(&parentHeadline.Children, currentHeadline.ID)
+			insertSibling(children, idx+1, currentHeadline)
+			currentHeadline.ParentID = parentHeadline.ParentID
+		}
+	}
 }
 
 // Delete the current headline (if we're not on the first headline).  Also delete all children.
