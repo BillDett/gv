@@ -533,30 +533,18 @@ func (o *outline) backTabPressed() {
 // Delete the current headline (if we're not on the first headline).  Also delete all children.
 // If on first headline and this is the only headline, remove all of the text (but keep the headline there since we always need at least one headline)
 func (o *outline) deleteHeadline() {
-	/*
-		var s, e, currentStart, start, end int
-		var dCurrent, d *delimiter
-		text := *(o.buf.Runes())
-		dCurrent, currentStart, end = o.currentHeadline(text, o.currentPosition)
-		d, s, e = o.nextHeadline(text, o.currentPosition)
-		if o.linePtr != 0 {
-			_, prevStart, _ := o.previousHeadline(text, o.currentPosition)
-			start = dCurrent.lhs
-			for d != nil && o.headlineIndex[d.id].Level > o.headlineIndex[dCurrent.id].Level {
-				end = e
-				d, s, e = o.nextHeadline(text, s)
-			}
-			// Now we should be able to delete start:end-1 from buf
-			extent := end - start
-			o.buf.Delete(start, extent)
-			o.currentPosition = prevStart
-			delete(o.headlineIndex, dCurrent.id)
-		} else if d == nil { // delete all text in first headline if it's the only one left
-			extent := end - currentStart
-			o.buf.Delete(currentStart, extent)
-			o.currentPosition = 3
-		}
-	*/
+	h := o.currentHeadline()
+	p := o.previousHeadline(h.ID)
+	if o.linePtr != 0 && p != nil { // Make sure we're not removing first Headline and there are at least two in outline
+		// Simply remove the Headline reference from our parent's children, keep in the index (so we can support Undo eventually)
+		_, children := o.childrenSliceFor(h.ID)
+		o.removeChildFrom(children, h.ID)
+		o.currentHeadlineID = p.ID
+		o.currentPosition = 0
+	} else { // delete all text in first headline if it's the only one left
+		h.Buf.Delete(0, h.Buf.lastpos-2)
+		o.currentPosition = 0
+	}
 }
 
 // Collapse the current headline and all children
