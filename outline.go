@@ -268,6 +268,37 @@ func (o *outline) currentHeadline() *Headline {
 	return o.headlineIndex[o.currentHeadlineID]
 }
 
+// Insert a Headline into a children slice at the given index
+//  Updates the provided slice of Headlines
+// 0 <= index <= len(children)
+func insertSibling(children *[]*Headline, index int, value *Headline) { //*[]*Headline {
+	*children = append(*children, nil)
+	copy((*children)[index+1:], (*children)[index:])
+	(*children)[index] = value
+}
+
+// Find childID in list of children, remove it from the list
+func (o *outline) removeChildFrom(children *[]*Headline, childID int) {
+	var i int
+	var c *Headline
+	for i, c = range *children {
+		if c.ID == childID {
+			break
+		}
+	}
+	if i == len(*children) { // We didn't find this childID
+		fmt.Printf("Hm- was asked to remove child %d from list %v but didn't find it", childID, *children)
+		return
+	}
+	// Remove the child
+	s := children
+	copy((*s)[i:], (*s)[i+1:]) // Shift s[i+1:] left one index.
+	(*s)[len(*s)-1] = nil      // Erase last element (write zero value).
+	*s = (*s)[:len(*s)-1]      // Truncate slice.
+}
+
+// =============== Movement Methods ================================
+
 func (o *outline) moveRight() {
 	previousHeadlineID := o.currentHeadlineID
 	if o.currentPosition < o.headlineIndex[o.currentHeadlineID].Buf.lastpos-1 { // are we within the text of current Headline?
@@ -365,12 +396,15 @@ func (o *outline) moveUp() {
 	}
 }
 
+// =============== Editing Methods ================================
+
 func (o *outline) insertRuneAtCurrentPosition(r rune) {
 	h := o.currentHeadline()
 	h.Buf.InsertRunes(o.currentPosition, []rune{r})
 	o.moveRight()
 }
 
+// Remove the previous character.  Join this Headline to the previous Headline if on first character
 func (o *outline) backspace() {
 	if o.currentPosition == 0 && o.linePtr == 0 { // Do nothing if on first character of first headline
 		return
@@ -381,39 +415,47 @@ func (o *outline) backspace() {
 			currentHeadline.Buf.Delete(posToRemove, 1)
 			o.moveLeft()
 		} else { // Join this headline with previous one
-			/*
-				TODO: Need to think this thru- getting pretty convoluted
-
-				previousHeadline := o.previousHeadline(currentHeadline.ID)
-				if previousHeadline != nil {
-					o.currentPosition = previousHeadline.Buf.lastpos - 1
-					previousHeadline.Buf.Append(currentHeadline.Buf.Text())
-					// Tidy up the parent's children slice
-					var children []*Headline
-					if currentHeadline.ParentID != -1 {
-						children = o.headlineIndex[currentHeadline.ParentID].Children
-					} else {
-						children = o.headlines
-					}
-					for c := range(children) {
-						if children[c].ID == currentHeadline.ID {
-							break
-						}
-					}
-					o.currentHeadlineID = previousHeadline.ID
-					delete(o.headlineIndex, currentHeadline.ID)
+			previousHeadline := o.previousHeadline(currentHeadline.ID)
+			if previousHeadline != nil {
+				// Add my text to the previous Headline, remove me from my parent's child list
+				//  Don't bother removing the actual Headline itself from o.headlineIndex- in case we want to support undo
+				o.currentPosition = previousHeadline.Buf.lastpos - 1
+				previousHeadline.Buf.Delete(previousHeadline.Buf.lastpos-1, 1) // remove trailing nodeDelim
+				previousHeadline.Buf.Append(currentHeadline.Buf.Text())
+				// If I have children, add them as children of the previous Headline
+				for i, c := range currentHeadline.Children {
+					insertSibling(&previousHeadline.Children, i, c)
+					c.ParentID = previousHeadline.ID
 				}
-			*/
+				// Remove me from my parent and make previous Headline the current one
+				_, children := o.childrenSliceFor(currentHeadline.ID)
+				o.removeChildFrom(children, currentHeadline.ID)
+				o.currentHeadlineID = previousHeadline.ID
+			}
 		}
 	}
 }
 
+// delete the character underneath the cursor.  Join the next headline to this one if on last character of headline.
 func (o *outline) delete() {
 	currentHeadline := o.currentHeadline()
 	if o.currentPosition != currentHeadline.Buf.lastpos-1 { // Just delete the current position
 		currentHeadline.Buf.Delete(o.currentPosition, 1)
 	} else { // Join the next Headline onto this one
-		// TODO
+		nextHeadline := o.nextHeadline(currentHeadline.ID)
+		if nextHeadline != nil {
+			// Add text from next Headline onto my own, add their children as mine
+			currentHeadline.Buf.Delete(o.currentPosition, 1) // remove my trailing nodeDelim
+			currentHeadline.Buf.Append(nextHeadline.Buf.Text())
+			// If next Headline has children, make them my own
+			for i, c := range nextHeadline.Children {
+				insertSibling(&currentHeadline.Children, i, c)
+				c.ParentID = currentHeadline.ID
+			}
+			// Remove next Headline from its parent
+			_, children := o.childrenSliceFor(nextHeadline.ID)
+			o.removeChildFrom(children, nextHeadline.ID)
+		}
 	}
 }
 
@@ -450,38 +492,7 @@ func (o *outline) enterPressed() {
 
 }
 
-// Insert a Headline into a children slice at the given index
-//  Updates the provided slice of Headlines
-// 0 <= index <= len(children)
-func insertSibling(children *[]*Headline, index int, value *Headline) { //*[]*Headline {
-	*children = append(*children, nil)
-	copy((*children)[index+1:], (*children)[index:])
-	(*children)[index] = value
-}
-
-// Find childID in list of children, remove it from the list
-func (o *outline) removeChildFrom(children *[]*Headline, childID int) {
-	var i int
-	var c *Headline
-	for i, c = range *children {
-		if c.ID == childID {
-			break
-		}
-	}
-	if i == len(*children) { // We didn't find this childID
-		fmt.Printf("Hm- was asked to remove child %d from list %v but didn't find it", childID, *children)
-		return
-	}
-	// Remove the child
-	s := children
-	copy((*s)[i:], (*s)[i+1:]) // Shift s[i+1:] left one index.
-	(*s)[len(*s)-1] = nil      // Erase last element (write zero value).
-	*s = (*s)[:len(*s)-1]      // Truncate slice.
-}
-
-/*
- Promote a Headline further down the outline one level
-*/
+//  Promote a Headline further down the outline one level
 func (o *outline) tabPressed() {
 	if o.linePtr != 0 {
 		currentHeadline := o.currentHeadline()
@@ -502,9 +513,7 @@ func (o *outline) tabPressed() {
 	}
 }
 
-/*
-  "Demote" a Headline back up the outline one level
-*/
+//  "Demote" a Headline back up the outline one level
 func (o *outline) backTabPressed() {
 	if o.linePtr != 0 {
 		currentHeadline := o.currentHeadline()
@@ -542,7 +551,7 @@ func (o *outline) deleteHeadline() {
 		o.currentHeadlineID = p.ID
 		o.currentPosition = 0
 	} else { // delete all text in first headline if it's the only one left
-		h.Buf.Delete(0, h.Buf.lastpos-2)
+		h.Buf.Delete(0, h.Buf.lastpos-1)
 		o.currentPosition = 0
 	}
 }
