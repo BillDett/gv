@@ -48,8 +48,6 @@ func drawBorder(s tcell.Screen, x, y, width, height int) {
 	for bx := 0; bx < len(*tb); bx++ {
 		s.SetContent(bx+x+1, y, (*tb)[bx], nil, defStyle)
 		s.SetContent(bx+x+1, y+height-1, (*bb)[bx], nil, defStyle)
-		//s.SetContent(bx, y, hline, nil, defStyle)
-		//s.SetContent(bx, y+height-1, hline, nil, defStyle)
 	}
 	// Vertical
 	for by := y + 1; by < y+height-1; by++ {
@@ -91,37 +89,26 @@ func setFileTitle(filename string) {
 func layoutOutline(s tcell.Screen, o *outline) {
 	y := 1
 	o.lineIndex = []line{}
-	text := o.buf.Runes()
-	var start, end int
-	var delim *delimiter
-	var err error
-	delim, start, end = o.nextHeadline(*text, start)
-	//	for end < len(*text)-2 && delim != nil { // Scan thru all headlines (stop before you hit EOL Delim)
-	for delim != nil { // Scan thru all headlines (stop before you hit EOL Delim)
-
-		if err != nil {
-			fmt.Printf("%v\n", err)
-			break
-		}
-		y = layoutHeadline(s, o, text, start, end+1, y, o.headlineIndex[delim.id].Level, false) // we use end+1 so we render the <nodeDelim>- this gives us something at end of headline to start typing on when appending text to headline
-		delim, start, end = o.nextHeadline(*text, end)
+	for _, h := range o.headlines {
+		y = layoutHeadline(s, o, h, 1, y)
 	}
 }
 
-// Format headline according to indent and word-wrap the text.
-func layoutHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int, y int, level int, collapsed bool) int {
+// Format headline text according to indent and word-wrap.  Layout all of its children.
+func layoutHeadline(s tcell.Screen, o *outline, h *Headline, level int, y int) int {
 	origX := 1
-	level++
 	var bullet rune
 	endY := y
-	if collapsed {
-		bullet = solid_bullet
-	} else {
+	if h.Expanded {
 		bullet = vtriangle
+	} else {
+		bullet = solid_bullet
 	}
 	indent := origX + (level * 3)
 	hangingIndent := indent + 3
-	pos := start
+	text := h.Buf.Runes()
+	pos := 0
+	end := len(*text)
 	firstLine := true
 	for pos < end {
 		endPos := pos + o.editorWidth
@@ -131,7 +118,7 @@ func layoutHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int
 				mybullet = bullet
 				firstLine = false
 			}
-			o.recordLogicalLine(mybullet, indent, hangingIndent, pos, end-pos)
+			o.recordLogicalLine(h.ID, mybullet, indent, hangingIndent, pos, end-pos)
 			endPos = end
 			endY++
 		} else { // on first or middle fragment
@@ -140,7 +127,7 @@ func layoutHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int
 				mybullet = bullet
 				firstLine = false
 			}
-			if !unicode.IsSpace((*text)[endPos]) {
+			if endPos < len(*text) && !unicode.IsSpace((*text)[endPos]) {
 				// Walk backwards until you see your first whitespace
 				p := endPos
 				for p > pos && !unicode.IsSpace((*text)[p]) {
@@ -150,10 +137,14 @@ func layoutHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int
 					endPos = p + 1
 				}
 			}
-			o.recordLogicalLine(mybullet, indent, hangingIndent, pos, endPos-pos)
+			o.recordLogicalLine(h.ID, mybullet, indent, hangingIndent, pos, endPos-pos)
 			endY++
 		}
 		pos = endPos
+	}
+
+	for _, h := range h.Children {
+		endY = layoutHeadline(s, o, h, level+1, endY)
 	}
 
 	return endY
@@ -161,16 +152,16 @@ func layoutHeadline(s tcell.Screen, o *outline, text *[]rune, start int, end int
 
 // Walk thru the lineIndex and render each logical line that is within the window's boundaries
 func renderOutline(s tcell.Screen, o *outline) {
-	runes := *(o.buf.Runes())
 	y := 1
 	lastLine := o.topLine + o.editorHeight - 1
 	for l := o.topLine; l <= lastLine && l < len(o.lineIndex); l++ {
 		x := 0
 		line := o.lineIndex[l]
+		runes := (*o.headlineIndex[line.headlineID].Buf.Runes())
 		s.SetContent(x+line.indent, y, line.bullet, nil, defStyle)
 		for p := line.position; p < line.position+line.length; p++ {
 			// If we're rendering the current position, place cursor here, remember this is current logical line
-			if o.currentPosition == p {
+			if line.headlineID == o.currentHeadlineID && o.currentPosition == p {
 				cursX = line.hangingIndent + x
 				cursY = y
 				o.linePtr = l
@@ -184,21 +175,23 @@ func renderOutline(s tcell.Screen, o *outline) {
 
 func genTestOutline(s tcell.Screen) *outline {
 	o := newOutline(s)
-	o.addHeadline("What is this odd beast GrandView?", 0)
-	o.addHeadline("In a single-pane outliner, all the components of your outline and its accompanying information are visible in one window.", 1)
-	o.addHeadline("Project and task manager", 2)
-	o.addHeadline("Information manager", 2)
-	o.addHeadline("Here's a headline that has children hidden", 0)
-	o.addHeadline("Here's a headline that has no children", 0)
-	o.addHeadline("What makes GrandView so unique even today?  How is it possible that such a product like this could exist?", 0)
-	o.addHeadline("Multiple Views", 1)
-	o.addHeadline("ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890", 1)
-	o.addHeadline("Outline View", 1)
-	o.addHeadline("You can associate any headline (node) with a document. Document view is essentially a hoist that removes all the other elements of your outline from the screen so you can focus on writing the one document. When you are done writing this document (or section of your outline), you can return to outline view, where your document text.", 1)
-	o.addHeadline("Category & Calendar Views", 1)
-	o.addHeadline("Way over the top.", 2)
-	o.addHeadline("ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVW XYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ123456 7890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890", 2)
-	o.addHeadline("Fully customizable meta-data", 1)
+	o.addHeadline("What is this odd beast GrandView?", -1)                                                                                                                                                                                                                                                                                                             // 1
+	o.addHeadline("In a single-pane outliner, all the components of your outline and its accompanying information are visible in one window.", 1)                                                                                                                                                                                                                      // 2
+	o.addHeadline("Project and task manager", 2)                                                                                                                                                                                                                                                                                                                       // 3
+	o.addHeadline("Information manager", 2)                                                                                                                                                                                                                                                                                                                            // 4
+	o.addHeadline("Here's a headline that has children hidden", -1)                                                                                                                                                                                                                                                                                                    // 5
+	o.addHeadline("Here's a headline that has no children", -1)                                                                                                                                                                                                                                                                                                        // 6
+	o.addHeadline("What makes GrandView so unique even today?  How is it possible that such a product like this could exist?", 6)                                                                                                                                                                                                                                      // 7
+	o.addHeadline("Multiple Views", 7)                                                                                                                                                                                                                                                                                                                                 // 8
+	o.addHeadline("ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890", 7)                                                                                                                             // 9
+	o.addHeadline("Outline View", 7)                                                                                                                                                                                                                                                                                                                                   // 10
+	o.addHeadline("You can associate any headline (node) with a document. Document view is essentially a hoist that removes all the other elements of your outline from the screen so you can focus on writing the one document. When you are done writing this document (or section of your outline), you can return to outline view, where your document text.", 10) // 11
+	o.addHeadline("Category & Calendar Views", 7)                                                                                                                                                                                                                                                                                                                      // 12
+	o.addHeadline("Way over the top.", 2)                                                                                                                                                                                                                                                                                                                              // 13
+	o.addHeadline("ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVW XYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ123456 7890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890", 13)                                                                                                                          // 14
+	o.addHeadline("Fully customizable meta-data", 14)
+	o.currentHeadlineID = 1
+	o.currentPosition = 0
 	return o
 }
 
@@ -315,10 +308,10 @@ func handleEvents(s tcell.Screen, o *outline) {
 				o.enterPressed()
 				drawScreen(s, o)
 			case tcell.KeyTab:
-				o.tabPressed(true)
+				o.tabPressed()
 				drawScreen(s, o)
 			case tcell.KeyBacktab:
-				o.tabPressed(false)
+				o.backTabPressed()
 				drawScreen(s, o)
 			case tcell.KeyRune:
 				dirty = true
@@ -379,7 +372,6 @@ func handleEvents(s tcell.Screen, o *outline) {
 
 func main() {
 
-	//s, _ := tcell.NewScreen()
 	s, e := tcell.NewScreen()
 	if e != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", e)
@@ -396,6 +388,7 @@ func main() {
 	s.SetStyle(defStyle)
 
 	o := newOutline(s)
+	//o := genTestOutline(s)
 	if len(os.Args) > 1 {
 		currentFilename = os.Args[1]
 		err := o.load(currentFilename)
@@ -406,7 +399,11 @@ func main() {
 			prompt(s, o, msg)
 		}
 	} else {
-		o.init()
+		err := o.init()
+		if err != nil {
+			msg := fmt.Sprintf("Error initalizing outline: %v", err)
+			prompt(s, o, msg)
+		}
 	}
 
 	//o.test()

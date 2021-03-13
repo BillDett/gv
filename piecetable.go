@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 /*
@@ -183,6 +185,30 @@ func (p *PieceTable) Runes() *[]rune {
 		}
 	}
 	return &runes
+}
+
+// MarshalJSON is a custom marshaller so our PieceTable can be exported as a string of text
+func (p *PieceTable) MarshalJSON() ([]byte, error) {
+	str := p.Text()
+	str = strings.Replace(str, "\"", "\\\"", -1)
+	result := "{ \"text\": \"" + str + "\" }"
+	return []byte(result), nil
+}
+
+// UnmarshalJSON is a custom unmarshaller so a JSON string can be imported as a PieceTable
+// Assumes JSON is of form { "text": "some string to initialize our PieceTable" }
+//   (if multiple entries exist in the JSON object, it is indeterminate which will be used for PieceTable)
+func (p *PieceTable) UnmarshalJSON(b []byte) error {
+	var v interface{}
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	// Initialize PieceTable with first value we get from map
+	for _, value := range v.(map[string]interface{}) {
+		p.Insert(0, value.(string)) // type coerce what we got into a string
+		break
+	}
+	return nil
 }
 
 func insertPiece(slice []piece, newpiece piece, index int) []piece {
