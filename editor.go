@@ -1,6 +1,10 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"strings"
+
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -31,11 +35,12 @@ type line struct {
 	length        int  // How many runes in this "line"
 }
 
-var defStyle tcell.Style
-
 var currentLine int // which "line" we are currently on
 var cursX int       // X coordinate of the cursor
 var cursY int       // Y coordinate of the cursor
+
+// TODO: MAKE THIS A MEMBER OF editor ITSELF
+var dirty bool = false // Is the outliine buffer modified since last save?
 
 func (e *editor) setScreenSize(s tcell.Screen) {
 	var width int
@@ -326,4 +331,109 @@ func (e *editor) collapse() {
 //  (this just marks each headline as visible)
 func (e *editor) expand() {
 
+}
+
+func (e *editor) handleEvents(s tcell.Screen, o *outline) {
+	for {
+		switch ev := s.PollEvent().(type) {
+		case *tcell.EventResize:
+			s.Sync()
+			drawScreen(s, e, o)
+		case *tcell.EventKey:
+			mod := ev.Modifiers()
+			//fmt.Printf("EventKey Modifiers: %d Key: %d Rune: %v", mod, key, ch)
+			switch ev.Key() {
+			case tcell.KeyDown:
+				if mod == tcell.ModCtrl {
+					e.expand()
+				} else {
+					e.moveDown(o)
+				}
+				drawScreen(s, e, o)
+			case tcell.KeyUp:
+				if mod == tcell.ModCtrl {
+					e.collapse()
+				} else {
+					e.moveUp(o)
+				}
+				drawScreen(s, e, o)
+			case tcell.KeyRight:
+				e.moveRight(o)
+				drawScreen(s, e, o)
+			case tcell.KeyLeft:
+				e.moveLeft(o)
+				drawScreen(s, e, o)
+			case tcell.KeyBackspace, tcell.KeyBackspace2:
+				dirty = true
+				e.backspace(o)
+				drawScreen(s, e, o)
+			case tcell.KeyDelete:
+				dirty = true
+				e.delete(o)
+				drawScreen(s, e, o)
+			case tcell.KeyEnter:
+				dirty = true
+				e.enterPressed(o)
+				drawScreen(s, e, o)
+			case tcell.KeyTab:
+				e.tabPressed(o)
+				drawScreen(s, e, o)
+			case tcell.KeyBacktab:
+				e.backTabPressed(o)
+				drawScreen(s, e, o)
+			case tcell.KeyRune:
+				dirty = true
+				e.insertRuneAtCurrentPosition(o, ev.Rune())
+				drawScreen(s, e, o)
+			case tcell.KeyCtrlD:
+				e.deleteHeadline(o)
+				drawScreen(s, e, o)
+			case tcell.KeyCtrlF: // for debugging
+				o.dump(e)
+			case tcell.KeyCtrlS:
+				if currentFilename == "" {
+					f := prompt(s, e, o, "Filename: ")
+					if f != "" {
+						currentFilename = f
+						err := o.save(currentFilename)
+						if err == nil {
+							dirty = false
+							setFileTitle(currentFilename)
+						} else {
+							msg := fmt.Sprintf("Error saving file: %v", err)
+							prompt(s, e, o, msg)
+						}
+					}
+				} else {
+					dirty = false
+					o.save(currentFilename)
+				}
+				drawScreen(s, e, o)
+			case tcell.KeyCtrlQ:
+				save := prompt(s, e, o, "Outline modified, save [Y|N]? ")
+				if save == "" {
+					clearPrompt(s)
+					drawScreen(s, e, o)
+					break
+				}
+				if strings.ToUpper(save) != "N" {
+					if currentFilename == "" {
+						f := prompt(s, e, o, "Filename: ")
+						if f != "" {
+							o.save(f)
+						} else { // skipped setting filename, cancel quit request
+							clearPrompt(s)
+							drawScreen(s, e, o)
+							break
+						}
+					} else {
+						o.save(currentFilename)
+						drawScreen(s, e, o)
+					}
+				}
+				s.Fini()
+				os.Exit(0)
+			}
+		}
+	}
 }

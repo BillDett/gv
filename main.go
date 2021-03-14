@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"strings"
 	"unicode"
 
 	"github.com/gdamore/tcell/v2"
@@ -38,9 +37,11 @@ const dash_bullet = '\u2043'
 const shear_bullet = '\u25B0'
 const box_bullet = '\u25A0'
 
-var dirty bool = false // Is the outliine buffer modified since last save?
+var defStyle tcell.Style
+var fileStyle tcell.Style
+var dirStyle tcell.Style
 
-//var lhs Organizer
+var org *organizer
 var editorX int = 15 // Column at which editor starts
 
 func drawBorder(s tcell.Screen, x, y, width, height int) {
@@ -214,11 +215,31 @@ func drawScreen(s tcell.Screen, e *editor, o *outline) {
 	width, height := s.Size()
 	s.Clear()
 	drawBorder(s, 0, 0, width, height-1)
+	drawOrganizer(s, height)
 	e.setScreenSize(s)
 	layoutOutline(s, e, o)
 	renderOutline(s, e, o)
 	s.ShowCursor(cursX, cursY)
 	s.Show()
+}
+
+func drawOrganizer(s tcell.Screen, height int) {
+	org.height = height - 2
+	y := 1
+	for c := org.topLine; c < len(org.entries); c++ {
+		if y < org.height {
+			style := fileStyle
+			if org.entries[c].isDir {
+				style = dirStyle
+			}
+			for x, r := range org.entries[c].name {
+				if x < org.width {
+					s.SetContent(1+x, y, r, nil, style)
+				}
+			}
+		}
+		y++
+	}
 }
 
 func clearPrompt(s tcell.Screen) {
@@ -280,111 +301,6 @@ func prompt(s tcell.Screen, e *editor, o *outline, msg string) string {
 	}
 }
 
-func handleEvents(s tcell.Screen, e *editor, o *outline) {
-	for {
-		switch ev := s.PollEvent().(type) {
-		case *tcell.EventResize:
-			s.Sync()
-			drawScreen(s, e, o)
-		case *tcell.EventKey:
-			mod := ev.Modifiers()
-			//fmt.Printf("EventKey Modifiers: %d Key: %d Rune: %v", mod, key, ch)
-			switch ev.Key() {
-			case tcell.KeyDown:
-				if mod == tcell.ModCtrl {
-					e.expand()
-				} else {
-					e.moveDown(o)
-				}
-				drawScreen(s, e, o)
-			case tcell.KeyUp:
-				if mod == tcell.ModCtrl {
-					e.collapse()
-				} else {
-					e.moveUp(o)
-				}
-				drawScreen(s, e, o)
-			case tcell.KeyRight:
-				e.moveRight(o)
-				drawScreen(s, e, o)
-			case tcell.KeyLeft:
-				e.moveLeft(o)
-				drawScreen(s, e, o)
-			case tcell.KeyBackspace, tcell.KeyBackspace2:
-				dirty = true
-				e.backspace(o)
-				drawScreen(s, e, o)
-			case tcell.KeyDelete:
-				dirty = true
-				e.delete(o)
-				drawScreen(s, e, o)
-			case tcell.KeyEnter:
-				dirty = true
-				e.enterPressed(o)
-				drawScreen(s, e, o)
-			case tcell.KeyTab:
-				e.tabPressed(o)
-				drawScreen(s, e, o)
-			case tcell.KeyBacktab:
-				e.backTabPressed(o)
-				drawScreen(s, e, o)
-			case tcell.KeyRune:
-				dirty = true
-				e.insertRuneAtCurrentPosition(o, ev.Rune())
-				drawScreen(s, e, o)
-			case tcell.KeyCtrlD:
-				e.deleteHeadline(o)
-				drawScreen(s, e, o)
-			case tcell.KeyCtrlF: // for debugging
-				o.dump(e)
-			case tcell.KeyCtrlS:
-				if currentFilename == "" {
-					f := prompt(s, e, o, "Filename: ")
-					if f != "" {
-						currentFilename = f
-						err := o.save(currentFilename)
-						if err == nil {
-							dirty = false
-							setFileTitle(currentFilename)
-						} else {
-							msg := fmt.Sprintf("Error saving file: %v", err)
-							prompt(s, e, o, msg)
-						}
-					}
-				} else {
-					dirty = false
-					o.save(currentFilename)
-				}
-				drawScreen(s, e, o)
-			case tcell.KeyCtrlQ:
-				save := prompt(s, e, o, "Outline modified, save [Y|N]? ")
-				if save == "" {
-					clearPrompt(s)
-					drawScreen(s, e, o)
-					break
-				}
-				if strings.ToUpper(save) != "N" {
-					if currentFilename == "" {
-						f := prompt(s, e, o, "Filename: ")
-						if f != "" {
-							o.save(f)
-						} else { // skipped setting filename, cancel quit request
-							clearPrompt(s)
-							drawScreen(s, e, o)
-							break
-						}
-					} else {
-						o.save(currentFilename)
-						drawScreen(s, e, o)
-					}
-				}
-				s.Fini()
-				os.Exit(0)
-			}
-		}
-	}
-}
-
 func main() {
 
 	s, e := tcell.NewScreen()
@@ -399,12 +315,24 @@ func main() {
 
 	defStyle = tcell.StyleDefault.
 		Background(tcell.ColorBlack).
+		Foreground(tcell.ColorPowderBlue)
+
+	fileStyle = tcell.StyleDefault.
+		Background(tcell.ColorBlack).
 		Foreground(tcell.ColorGreen)
+
+	dirStyle = tcell.StyleDefault.
+		Background(tcell.ColorBlack).
+		Foreground(tcell.ColorBlue)
+
 	s.SetStyle(defStyle)
 
+	_, height := s.Size()
+
 	o := newOutline(s, "Example")
+	org = newOrganizer(height)
+	org.refresh()
 	ed := newEditor()
-	//o := genTestOutline(s)
 	if len(os.Args) > 1 {
 		currentFilename = os.Args[1]
 		err := o.load(currentFilename, ed)
@@ -424,6 +352,6 @@ func main() {
 
 	drawScreen(s, ed, o)
 
-	handleEvents(s, ed, o)
+	ed.handleEvents(s, o)
 
 }
