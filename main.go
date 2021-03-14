@@ -40,7 +40,7 @@ const box_bullet = '\u25A0'
 
 var dirty bool = false // Is the outliine buffer modified since last save?
 
-var lhs Organizer
+//var lhs Organizer
 var editorX int = 15 // Column at which editor starts
 
 func drawBorder(s tcell.Screen, x, y, width, height int) {
@@ -102,16 +102,16 @@ func setFileTitle(filename string) {
 	fileTitle = append(fileTitle, []rune(filename)...)
 }
 
-func layoutOutline(s tcell.Screen, o *outline) {
+func layoutOutline(s tcell.Screen, e *editor, o *outline) {
 	y := 1
-	o.lineIndex = []line{}
+	e.lineIndex = []line{}
 	for _, h := range o.headlines {
-		y = layoutHeadline(s, o, h, 1, y)
+		y = layoutHeadline(s, e, o, h, 1, y)
 	}
 }
 
 // Format headline text according to indent and word-wrap.  Layout all of its children.
-func layoutHeadline(s tcell.Screen, o *outline, h *Headline, level int, y int) int {
+func layoutHeadline(s tcell.Screen, e *editor, o *outline, h *Headline, level int, y int) int {
 	var bullet rune
 	endY := y
 	if h.Expanded {
@@ -126,14 +126,14 @@ func layoutHeadline(s tcell.Screen, o *outline, h *Headline, level int, y int) i
 	end := len(*text)
 	firstLine := true
 	for pos < end {
-		endPos := pos + o.editorWidth
+		endPos := pos + e.editorWidth
 		if endPos > end { // overshot end of text, we're on the first or last fragment
 			var mybullet rune
 			if firstLine { // if we're laying out first line less than editor width, remember that we want to use a bullet
 				mybullet = bullet
 				firstLine = false
 			}
-			o.recordLogicalLine(h.ID, mybullet, indent, hangingIndent, pos, end-pos)
+			e.recordLogicalLine(h.ID, mybullet, indent, hangingIndent, pos, end-pos)
 			endPos = end
 			endY++
 		} else { // on first or middle fragment
@@ -152,34 +152,34 @@ func layoutHeadline(s tcell.Screen, o *outline, h *Headline, level int, y int) i
 					endPos = p + 1
 				}
 			}
-			o.recordLogicalLine(h.ID, mybullet, indent, hangingIndent, pos, endPos-pos)
+			e.recordLogicalLine(h.ID, mybullet, indent, hangingIndent, pos, endPos-pos)
 			endY++
 		}
 		pos = endPos
 	}
 
 	for _, h := range h.Children {
-		endY = layoutHeadline(s, o, h, level+1, endY)
+		endY = layoutHeadline(s, e, o, h, level+1, endY)
 	}
 
 	return endY
 }
 
 // Walk thru the lineIndex and render each logical line that is within the window's boundaries
-func renderOutline(s tcell.Screen, o *outline) {
+func renderOutline(s tcell.Screen, e *editor, o *outline) {
 	y := 1
-	lastLine := o.topLine + o.editorHeight - 1
-	for l := o.topLine; l <= lastLine && l < len(o.lineIndex); l++ {
+	lastLine := e.topLine + e.editorHeight - 1
+	for l := e.topLine; l <= lastLine && l < len(e.lineIndex); l++ {
 		x := 0
-		line := o.lineIndex[l]
+		line := e.lineIndex[l]
 		runes := (*o.headlineIndex[line.headlineID].Buf.Runes())
 		s.SetContent(x+line.indent, y, line.bullet, nil, defStyle)
 		for p := line.position; p < line.position+line.length; p++ {
 			// If we're rendering the current position, place cursor here, remember this is current logical line
-			if line.headlineID == o.currentHeadlineID && o.currentPosition == p {
+			if line.headlineID == e.currentHeadlineID && e.currentPosition == p {
 				cursX = line.hangingIndent + x
 				cursY = y
-				o.linePtr = l
+				e.linePtr = l
 			}
 			s.SetContent(x+line.hangingIndent, y, runes[p], nil, defStyle)
 			x++
@@ -188,7 +188,7 @@ func renderOutline(s tcell.Screen, o *outline) {
 	}
 }
 
-func genTestOutline(s tcell.Screen) *outline {
+func genTestOutline(s tcell.Screen, e *editor) *outline {
 	o := newOutline(s, "Sample")
 	o.addHeadline("What is this odd beast GrandView?", -1)                                                                                                                                                                                                                                                                                                             // 1
 	o.addHeadline("In a single-pane outliner, all the components of your outline and its accompanying information are visible in one window.", 1)                                                                                                                                                                                                                      // 2
@@ -205,18 +205,18 @@ func genTestOutline(s tcell.Screen) *outline {
 	o.addHeadline("Way over the top.", 2)                                                                                                                                                                                                                                                                                                                              // 13
 	o.addHeadline("ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVW XYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ123456 7890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890", 13)                                                                                                                          // 14
 	o.addHeadline("Fully customizable meta-data", 14)
-	o.currentHeadlineID = 1
-	o.currentPosition = 0
+	e.currentHeadlineID = 1
+	e.currentPosition = 0
 	return o
 }
 
-func drawScreen(s tcell.Screen, o *outline) {
+func drawScreen(s tcell.Screen, e *editor, o *outline) {
 	width, height := s.Size()
 	s.Clear()
 	drawBorder(s, 0, 0, width, height-1)
-	o.setScreenSize(s)
-	layoutOutline(s, o)
-	renderOutline(s, o)
+	e.setScreenSize(s)
+	layoutOutline(s, e, o)
+	renderOutline(s, e, o)
 	s.ShowCursor(cursX, cursY)
 	s.Show()
 }
@@ -250,7 +250,7 @@ func renderPrompt(s tcell.Screen, cx int, msg string, response string) {
 }
 
 // Prompt the user for some input- blocking main event loop
-func prompt(s tcell.Screen, o *outline, msg string) string {
+func prompt(s tcell.Screen, e *editor, o *outline, msg string) string {
 	var response []rune
 	var cursX int = len(msg) + 1
 	for {
@@ -258,7 +258,7 @@ func prompt(s tcell.Screen, o *outline, msg string) string {
 		switch ev := s.PollEvent().(type) {
 		case *tcell.EventResize:
 			s.Sync()
-			drawScreen(s, o)
+			drawScreen(s, e, o)
 		case *tcell.EventKey:
 			switch ev.Key() {
 			case tcell.KeyRune:
@@ -280,66 +280,66 @@ func prompt(s tcell.Screen, o *outline, msg string) string {
 	}
 }
 
-func handleEvents(s tcell.Screen, o *outline) {
+func handleEvents(s tcell.Screen, e *editor, o *outline) {
 	for {
 		switch ev := s.PollEvent().(type) {
 		case *tcell.EventResize:
 			s.Sync()
-			drawScreen(s, o)
+			drawScreen(s, e, o)
 		case *tcell.EventKey:
 			mod := ev.Modifiers()
 			//fmt.Printf("EventKey Modifiers: %d Key: %d Rune: %v", mod, key, ch)
 			switch ev.Key() {
 			case tcell.KeyDown:
 				if mod == tcell.ModCtrl {
-					o.expand()
+					e.expand()
 				} else {
-					o.moveDown()
+					e.moveDown(o)
 				}
-				drawScreen(s, o)
+				drawScreen(s, e, o)
 			case tcell.KeyUp:
 				if mod == tcell.ModCtrl {
-					o.collapse()
+					e.collapse()
 				} else {
-					o.moveUp()
+					e.moveUp(o)
 				}
-				drawScreen(s, o)
+				drawScreen(s, e, o)
 			case tcell.KeyRight:
-				o.moveRight()
-				drawScreen(s, o)
+				e.moveRight(o)
+				drawScreen(s, e, o)
 			case tcell.KeyLeft:
-				o.moveLeft()
-				drawScreen(s, o)
+				e.moveLeft(o)
+				drawScreen(s, e, o)
 			case tcell.KeyBackspace, tcell.KeyBackspace2:
 				dirty = true
-				o.backspace()
-				drawScreen(s, o)
+				e.backspace(o)
+				drawScreen(s, e, o)
 			case tcell.KeyDelete:
 				dirty = true
-				o.delete()
-				drawScreen(s, o)
+				e.delete(o)
+				drawScreen(s, e, o)
 			case tcell.KeyEnter:
 				dirty = true
-				o.enterPressed()
-				drawScreen(s, o)
+				e.enterPressed(o)
+				drawScreen(s, e, o)
 			case tcell.KeyTab:
-				o.tabPressed()
-				drawScreen(s, o)
+				e.tabPressed(o)
+				drawScreen(s, e, o)
 			case tcell.KeyBacktab:
-				o.backTabPressed()
-				drawScreen(s, o)
+				e.backTabPressed(o)
+				drawScreen(s, e, o)
 			case tcell.KeyRune:
 				dirty = true
-				o.insertRuneAtCurrentPosition(ev.Rune())
-				drawScreen(s, o)
+				e.insertRuneAtCurrentPosition(o, ev.Rune())
+				drawScreen(s, e, o)
 			case tcell.KeyCtrlD:
-				o.deleteHeadline()
-				drawScreen(s, o)
+				e.deleteHeadline(o)
+				drawScreen(s, e, o)
 			case tcell.KeyCtrlF: // for debugging
-				o.dump()
+				o.dump(e)
 			case tcell.KeyCtrlS:
 				if currentFilename == "" {
-					f := prompt(s, o, "Filename: ")
+					f := prompt(s, e, o, "Filename: ")
 					if f != "" {
 						currentFilename = f
 						err := o.save(currentFilename)
@@ -348,34 +348,34 @@ func handleEvents(s tcell.Screen, o *outline) {
 							setFileTitle(currentFilename)
 						} else {
 							msg := fmt.Sprintf("Error saving file: %v", err)
-							prompt(s, o, msg)
+							prompt(s, e, o, msg)
 						}
 					}
 				} else {
 					dirty = false
 					o.save(currentFilename)
 				}
-				drawScreen(s, o)
+				drawScreen(s, e, o)
 			case tcell.KeyCtrlQ:
-				save := prompt(s, o, "Outline modified, save [Y|N]? ")
+				save := prompt(s, e, o, "Outline modified, save [Y|N]? ")
 				if save == "" {
 					clearPrompt(s)
-					drawScreen(s, o)
+					drawScreen(s, e, o)
 					break
 				}
 				if strings.ToUpper(save) != "N" {
 					if currentFilename == "" {
-						f := prompt(s, o, "Filename: ")
+						f := prompt(s, e, o, "Filename: ")
 						if f != "" {
 							o.save(f)
 						} else { // skipped setting filename, cancel quit request
 							clearPrompt(s)
-							drawScreen(s, o)
+							drawScreen(s, e, o)
 							break
 						}
 					} else {
 						o.save(currentFilename)
-						drawScreen(s, o)
+						drawScreen(s, e, o)
 					}
 				}
 				s.Fini()
@@ -403,28 +403,27 @@ func main() {
 	s.SetStyle(defStyle)
 
 	o := newOutline(s, "Example")
+	ed := newEditor()
 	//o := genTestOutline(s)
 	if len(os.Args) > 1 {
 		currentFilename = os.Args[1]
-		err := o.load(currentFilename)
+		err := o.load(currentFilename, ed)
 		if err == nil {
 			setFileTitle(currentFilename)
 		} else {
 			msg := fmt.Sprintf("Error opening file: %v", err)
-			prompt(s, o, msg)
+			prompt(s, ed, o, msg)
 		}
 	} else {
-		err := o.init()
+		err := o.init(ed)
 		if err != nil {
 			msg := fmt.Sprintf("Error initalizing outline: %v", err)
-			prompt(s, o, msg)
+			prompt(s, ed, o, msg)
 		}
 	}
 
-	//o.test()
+	drawScreen(s, ed, o)
 
-	drawScreen(s, o)
-
-	handleEvents(s, o)
+	handleEvents(s, ed, o)
 
 }
