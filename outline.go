@@ -9,14 +9,14 @@ import (
 )
 
 /*
-Okay- let's rip this thing apart and change the internal model entirely over to a hierarchy instead of a flat stream of runes
-Go back to a proper tree structure- headline text is now managed individually through separate PieceTables.
-lineIndex can stay the same- except we need to add a way to find out which Headline this line is part of.
-The outline has a list of top level Headlines, each may have their own children Headlines, etc...
+
+We have conflated the concepts of the outline and the editor into a single struct...really need to break that
+apart so we are saving just the outline to disk, but passing the editor around as well.
 
 */
 
 type outline struct {
+	title             string            // describes an outline in the Organizer
 	headlines         []*Headline       // list of top level headlines (this denotes the structure of the outline)
 	headlineIndex     map[int]*Headline // index to all Headlines (keyed by ID- this makes serialization easier than using pointers)
 	lineIndex         []line            // Text Position index for each "line" after editor has been laid out.
@@ -61,8 +61,8 @@ var cursY int       // Y coordinate of the cursor
 var dbg int
 var dbg2 int
 
-func newOutline(s tcell.Screen) *outline {
-	o := &outline{[]*Headline{}, make(map[int]*Headline), nil, 0, 0, 0, 0, 0, 0}
+func newOutline(s tcell.Screen, title string) *outline {
+	o := &outline{title, []*Headline{}, make(map[int]*Headline), nil, 0, 0, 0, 0, 0, 0}
 	o.setScreenSize(s)
 	return o
 }
@@ -489,6 +489,11 @@ func (o *outline) enterPressed() {
 	o.headlineIndex[newHeadline.ID] = newHeadline
 	o.currentHeadlineID = newHeadline.ID
 	o.currentPosition = 0
+
+	// Scroll?
+	if o.linePtr-o.topLine+1 >= o.editorHeight {
+		o.topLine++
+	}
 
 }
 

@@ -2,12 +2,15 @@
 
 A DIY take on the old DOS GrandView app that was very good at managing outlines.
 
+To Do
+* More navigation (PgUp/PgDown, Home, End)
+* Selecting text (shift-navigate)
+* Copy/Cut/Paste Headlines
+* Collapse/Expand Headlines (use bullets to indicate status)
 
-Rethink: Should I ditch the single-stream format for a proper tree structure again?  Seems like I'm halfway between two
-models now for no good reason.  Will I get more stability if I just move to a proper tree?
-
+Ideas
+* Instead of managing one outline at a time, manage a directory of outline files.  Have an Organizer on LHS of screen with a list of outlines.  When gv starts, focus is on Organizer- create new outline, or select an existing one.  Then edit the outline, ESC takes you back to Organizer.
+* Better use of color (everything doesn't need to be green).
 
 Bugs
-* Backspacing on first character of a child headline when parent level more than 1 less (due to join/split activity)
-* Backspacing on first character of last empty headline (hitting twice) causes crash
-* (Seems like backspacing on first char of a headline is mostly busted)
+* 

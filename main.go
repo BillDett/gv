@@ -20,8 +20,12 @@ const llcorner = '\u2514'
 const lrcorner = '\u2518'
 const hline = '\u2500'
 const vline = '\u2502'
+const tdown = '\u252c'
+const tup = '\u2534'
 
 const dirtyFlag = '*'
+
+const ellipsis = '\u2026'
 
 const htriangle = '\u25B6'
 const small_htriangle = '\u25B8'
@@ -35,6 +39,9 @@ const shear_bullet = '\u25B0'
 const box_bullet = '\u25A0'
 
 var dirty bool = false // Is the outliine buffer modified since last save?
+
+var lhs Organizer
+var editorX int = 15 // Column at which editor starts
 
 func drawBorder(s tcell.Screen, x, y, width, height int) {
 	// Corners
@@ -52,6 +59,7 @@ func drawBorder(s tcell.Screen, x, y, width, height int) {
 	// Vertical
 	for by := y + 1; by < y+height-1; by++ {
 		s.SetContent(x, by, vline, nil, defStyle)
+		s.SetContent(editorX, by, vline, nil, defStyle)
 		s.SetContent(x+width-1, by, vline, nil, defStyle)
 	}
 }
@@ -60,7 +68,11 @@ func renderTopBorder(width int) *[]rune {
 	var row []rune
 	titlePos := (width - len(fileTitle)) - 3
 	for p := 0; p < titlePos; p++ {
-		row = append(row, hline)
+		if p == editorX-1 {
+			row = append(row, tdown)
+		} else {
+			row = append(row, hline)
+		}
 	}
 	row = append(row, fileTitle...)
 	row = append(row, hline)
@@ -76,7 +88,11 @@ func renderTopBorder(width int) *[]rune {
 func renderBottomBorder(width int) *[]rune {
 	var row []rune
 	for p := 0; p < width; p++ {
-		row = append(row, hline)
+		if p == editorX-1 {
+			row = append(row, tup)
+		} else {
+			row = append(row, hline)
+		}
 	}
 	return &row
 }
@@ -96,7 +112,6 @@ func layoutOutline(s tcell.Screen, o *outline) {
 
 // Format headline text according to indent and word-wrap.  Layout all of its children.
 func layoutHeadline(s tcell.Screen, o *outline, h *Headline, level int, y int) int {
-	origX := 1
 	var bullet rune
 	endY := y
 	if h.Expanded {
@@ -104,7 +119,7 @@ func layoutHeadline(s tcell.Screen, o *outline, h *Headline, level int, y int) i
 	} else {
 		bullet = solid_bullet
 	}
-	indent := origX + (level * 3)
+	indent := editorX + (level * 3)
 	hangingIndent := indent + 3
 	text := h.Buf.Runes()
 	pos := 0
@@ -174,7 +189,7 @@ func renderOutline(s tcell.Screen, o *outline) {
 }
 
 func genTestOutline(s tcell.Screen) *outline {
-	o := newOutline(s)
+	o := newOutline(s, "Sample")
 	o.addHeadline("What is this odd beast GrandView?", -1)                                                                                                                                                                                                                                                                                                             // 1
 	o.addHeadline("In a single-pane outliner, all the components of your outline and its accompanying information are visible in one window.", 1)                                                                                                                                                                                                                      // 2
 	o.addHeadline("Project and task manager", 2)                                                                                                                                                                                                                                                                                                                       // 3
@@ -387,7 +402,7 @@ func main() {
 		Foreground(tcell.ColorGreen)
 	s.SetStyle(defStyle)
 
-	o := newOutline(s)
+	o := newOutline(s, "Example")
 	//o := genTestOutline(s)
 	if len(os.Args) > 1 {
 		currentFilename = os.Args[1]
