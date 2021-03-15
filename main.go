@@ -38,11 +38,15 @@ const shear_bullet = '\u25B0'
 const box_bullet = '\u25A0'
 
 var defStyle tcell.Style
+var buttonStyle tcell.Style
 var fileStyle tcell.Style
 var dirStyle tcell.Style
+var selectedStyle tcell.Style
 
 var org *organizer
-var editorX int = 15 // Column at which editor starts
+var editorX int = 15 // Column at which editor starts  TODO: MOVE THIS TO editor?
+
+var storageDirectory string
 
 func drawBorder(s tcell.Screen, x, y, width, height int) {
 	// Corners
@@ -215,31 +219,12 @@ func drawScreen(s tcell.Screen, e *editor, o *outline) {
 	width, height := s.Size()
 	s.Clear()
 	drawBorder(s, 0, 0, width, height-1)
-	drawOrganizer(s, height)
+	org.draw(s, height)
 	e.setScreenSize(s)
 	layoutOutline(s, e, o)
 	renderOutline(s, e, o)
 	s.ShowCursor(cursX, cursY)
 	s.Show()
-}
-
-func drawOrganizer(s tcell.Screen, height int) {
-	org.height = height - 2
-	y := 1
-	for c := org.topLine; c < len(org.entries); c++ {
-		if y < org.height {
-			style := fileStyle
-			if org.entries[c].isDir {
-				style = dirStyle
-			}
-			for x, r := range org.entries[c].name {
-				if x < org.width {
-					s.SetContent(1+x, y, r, nil, style)
-				}
-			}
-		}
-		y++
-	}
 }
 
 func clearPrompt(s tcell.Screen) {
@@ -301,6 +286,25 @@ func prompt(s tcell.Screen, e *editor, o *outline, msg string) string {
 	}
 }
 
+// Confirm that storage is set up; default to $HOME/.gv or use $GVHOME
+func setupStorage() (string, error) {
+	storageDirectory, found := os.LookupEnv("GVHOME")
+	if !found {
+		var err error
+		storageDirectory, err = os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		storageDirectory += "/.gv"
+	}
+	storageDirectory += "/outlines"
+	err := os.MkdirAll(storageDirectory, 0700)
+	if err != nil {
+		return "", err
+	}
+	return storageDirectory, nil
+}
+
 func main() {
 
 	s, e := tcell.NewScreen()
@@ -317,25 +321,39 @@ func main() {
 		Background(tcell.ColorBlack).
 		Foreground(tcell.ColorPowderBlue)
 
+	buttonStyle = tcell.StyleDefault.
+		Background(tcell.ColorBlack).
+		Foreground(tcell.ColorYellow)
+
 	fileStyle = tcell.StyleDefault.
 		Background(tcell.ColorBlack).
-		Foreground(tcell.ColorGreen)
+		Foreground(tcell.ColorWhite)
 
 	dirStyle = tcell.StyleDefault.
 		Background(tcell.ColorBlack).
 		Foreground(tcell.ColorBlue)
 
+	selectedStyle = tcell.StyleDefault.
+		Background(tcell.ColorPowderBlue).
+		Foreground(tcell.ColorBlack)
+
 	s.SetStyle(defStyle)
 
 	_, height := s.Size()
 
+	directory, err := setupStorage()
+	if err != nil {
+		fmt.Printf("Unable to set up storage: %v\n", err)
+		os.Exit(1)
+	}
+
 	o := newOutline(s, "Example")
-	org = newOrganizer(height)
+	org = newOrganizer(directory, height)
 	org.refresh()
-	ed := newEditor()
+	ed := newEditor(org)
 	if len(os.Args) > 1 {
 		currentFilename = os.Args[1]
-		err := o.load(currentFilename, ed)
+		err := ed.load(currentFilename, o)
 		if err == nil {
 			setFileTitle(currentFilename)
 		} else {

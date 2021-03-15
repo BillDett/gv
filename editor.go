@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"strings"
 
@@ -16,13 +18,14 @@ Editor is the main part of the screen, responsible for editing the outline
 
 type editor struct {
 	o                 *outline // Current outline being edited
-	lineIndex         []line   // Text Position index for each "line" after editor has been laid out.
-	linePtr           int      // index of the line currently beneath the cursor
-	editorWidth       int      // width of an editor column
-	editorHeight      int      // height of the editor window
-	currentHeadlineID int      // ID of headline cursor is on
-	currentPosition   int      // the current position within the currentHeadline.Buf
-	topLine           int      // index of the topmost "line" of the window in lineIndex
+	org               *organizer
+	lineIndex         []line // Text Position index for each "line" after editor has been laid out.
+	linePtr           int    // index of the line currently beneath the cursor
+	editorWidth       int    // width of an editor column
+	editorHeight      int    // height of the editor window
+	currentHeadlineID int    // ID of headline cursor is on
+	currentPosition   int    // the current position within the currentHeadline.Buf
+	topLine           int    // index of the topmost "line" of the window in lineIndex
 }
 
 // a line is a logical representation of a line that is rendered in the window
@@ -49,8 +52,43 @@ func (e *editor) setScreenSize(s tcell.Screen) {
 	e.editorHeight = height - 3 // 2 rows for border, 1 row for interaction
 }
 
-func newEditor() *editor {
-	return &editor{nil, nil, 0, 0, 0, 0, 0, 0}
+func newEditor(org *organizer) *editor {
+	return &editor{nil, org, nil, 0, 0, 0, 0, 0, 0}
+}
+
+// save the outline buffer to a file
+func (e *editor) save(filename string, o *outline) error {
+	buf, err := json.Marshal(o)
+	if err != nil {
+		return err
+	}
+	ioutil.WriteFile(org.directory+"/"+filename, buf, 0644)
+	org.refresh()
+	return nil
+}
+
+// load a .gv file and use it to populate the outline's buffer
+func (e *editor) load(filename string, o *outline) error {
+	buf, err := ioutil.ReadFile(org.directory + "/" + filename)
+	if err != nil {
+		return err
+	}
+	// Extract the outline JSON
+	err = json.Unmarshal(buf, &o.headlines)
+	if err != nil {
+		return err
+	}
+	if len(o.headlines) == 0 {
+		return fmt.Errorf("Error: did not read any headlines from the input file")
+	}
+	// (Re)build the headlineIndex
+	o.headlineIndex = make(map[int]*Headline)
+	for _, h := range o.headlines {
+		o.addHeadlineToIndex(h)
+	}
+	e.currentHeadlineID = o.headlines[0].ID
+	e.currentPosition = 0
+	return nil
 }
 
 // Store a 'logical' line- this is a rendered line of text on the screen. We use this index
@@ -395,7 +433,7 @@ func (e *editor) handleEvents(s tcell.Screen, o *outline) {
 					f := prompt(s, e, o, "Filename: ")
 					if f != "" {
 						currentFilename = f
-						err := o.save(currentFilename)
+						err := e.save(currentFilename, o)
 						if err == nil {
 							dirty = false
 							setFileTitle(currentFilename)
@@ -406,8 +444,11 @@ func (e *editor) handleEvents(s tcell.Screen, o *outline) {
 					}
 				} else {
 					dirty = false
-					o.save(currentFilename)
+					e.save(currentFilename, o)
 				}
+				drawScreen(s, e, o)
+			case tcell.KeyEscape:
+				org.handleEvents(s, o)
 				drawScreen(s, e, o)
 			case tcell.KeyCtrlQ:
 				save := prompt(s, e, o, "Outline modified, save [Y|N]? ")
@@ -420,14 +461,14 @@ func (e *editor) handleEvents(s tcell.Screen, o *outline) {
 					if currentFilename == "" {
 						f := prompt(s, e, o, "Filename: ")
 						if f != "" {
-							o.save(f)
+							e.save(f, o)
 						} else { // skipped setting filename, cancel quit request
 							clearPrompt(s)
 							drawScreen(s, e, o)
 							break
 						}
 					} else {
-						o.save(currentFilename)
+						e.save(currentFilename, o)
 						drawScreen(s, e, o)
 					}
 				}
