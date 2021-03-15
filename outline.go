@@ -1,11 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
-
-	"github.com/gdamore/tcell/v2"
 )
 
 /*
@@ -15,9 +12,9 @@ apart so we are saving just the outline to disk, but passing the editor around a
 
 */
 
-type outline struct {
-	title         string            // describes an outline in the Organizer
-	headlines     []*Headline       // list of top level headlines (this denotes the structure of the outline)
+type Outline struct {
+	Title         string            // describes an outline in the Organizer
+	Headlines     []*Headline       // list of top level headlines (this denotes the structure of the outline)
 	headlineIndex map[int]*Headline // index to all Headlines (keyed by ID- this makes serialization easier than using pointers)
 }
 
@@ -38,13 +35,13 @@ const emptyHeadlineText = string(nodeDelim) // every Headline's text ends with a
 var dbg int
 var dbg2 int
 
-func newOutline(s tcell.Screen, title string) *outline {
-	o := &outline{title, []*Headline{}, make(map[int]*Headline)}
+func newOutline(title string) *Outline {
+	o := &Outline{title, []*Headline{}, make(map[int]*Headline)}
 	return o
 }
 
 // initialize a new outline to be used as a blank outline for editing
-func (o *outline) init(e *editor) error {
+func (o *Outline) init(e *editor) error {
 	id, _ := o.addHeadline("", -1)
 	e.currentHeadlineID = id
 	e.currentPosition = 0
@@ -66,11 +63,11 @@ func (h *Headline) toString(level int) string {
 	return buf
 }
 
-func (o *outline) dump(e *editor) {
+func (o *Outline) dump(e *editor) {
 	text := (*o.headlineIndex[e.currentHeadlineID].Buf.Runes())
 	out := "Headline and children\n"
 	//i, c := o.childrenSliceFor(13)
-	for _, h := range o.headlines {
+	for _, h := range o.Headlines {
 		out += h.toString(0) + "\n"
 	}
 	out += fmt.Sprintf("\nlinePtr %d, currentHeadline %d, currentPosition %d, current Rune (%#U) num Headlines %d, dbg %d, dbg2 %d\n",
@@ -78,58 +75,24 @@ func (o *outline) dump(e *editor) {
 	ioutil.WriteFile("dump.txt", []byte(out), 0644)
 }
 
-// save the outline buffer to a file
-func (o *outline) save(filename string) error {
-	buf, err := json.Marshal(o.headlines)
-	if err != nil {
-		return err
-	}
-	ioutil.WriteFile(filename, buf, 0644)
-	return nil
-}
-
-// load a .gv file and use it to populate the outline's buffer
-func (o *outline) load(filename string, e *editor) error {
-	buf, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return err
-	}
-	// Extract the outline JSON
-	err = json.Unmarshal(buf, &o.headlines)
-	if err != nil {
-		return err
-	}
-	if len(o.headlines) == 0 {
-		return fmt.Errorf("Error: did not read any headlines from the input file")
-	}
-	// (Re)build the headlineIndex
-	o.headlineIndex = make(map[int]*Headline)
-	for _, h := range o.headlines {
-		o.addHeadlineToIndex(h)
-	}
-	e.currentHeadlineID = o.headlines[0].ID
-	e.currentPosition = 0
-	return nil
-}
-
 // Add a Headline (and all of its children) into the o.headlineIndex
-func (o *outline) addHeadlineToIndex(h *Headline) {
+func (o *Outline) addHeadlineToIndex(h *Headline) {
 	o.headlineIndex[h.ID] = h
 	for _, c := range h.Children {
 		o.addHeadlineToIndex(c)
 	}
 }
 
-func (o *outline) newHeadline(text string, parent int) *Headline {
+func (o *Outline) newHeadline(text string, parent int) *Headline {
 	id := nextHeadlineID(o.headlineIndex)
 	return &Headline{id, parent, true, *NewPieceTable(text + emptyHeadlineText), []*Headline{}} // Note we're adding extra non-printing char to end of text
 }
 
 // appends a new headline onto the outline under the parent
-func (o *outline) addHeadline(text string, parent int) (int, error) {
+func (o *Outline) addHeadline(text string, parent int) (int, error) {
 	h := o.newHeadline(text, parent)
 	if parent == -1 { // Is this a top-level headline?
-		o.headlines = append(o.headlines, h)
+		o.Headlines = append(o.Headlines, h)
 	} else {
 		p, found := o.headlineIndex[parent]
 		if !found {
@@ -155,7 +118,7 @@ func nextHeadlineID(headlines map[int]*Headline) int {
 // Return the IDs of the Headlines just before and after the Headline at given ID.  Return -1 for either if at beginning or end of outline.
 // We leverage the fact that o.lineIndex is really a 'flattened' DFS list of Headlines, so it has the ordered list of Headlines
 //  TODO: THIS FORCES A COUPLING BETWEEN THE editor AND THE outline THAT IS ARTIFICIAL...
-func (o *outline) prevNextFrom(ID int, e *editor) (int, int) {
+func (o *Outline) prevNextFrom(ID int, e *editor) (int, int) {
 	previous := -1
 	next := -1
 	// generate list of ordered, unique headline IDs from e.lineIndex
@@ -183,13 +146,13 @@ func (o *outline) prevNextFrom(ID int, e *editor) (int, int) {
 }
 
 // Look up the index in the []*Headline where this Headline is being managed by its parent
-func (o *outline) childrenSliceFor(ID int) (int, *[]*Headline) {
+func (o *Outline) childrenSliceFor(ID int) (int, *[]*Headline) {
 	index := -1
 	var children *[]*Headline
 	h := o.headlineIndex[ID]
 	if h != nil {
 		if h.ParentID == -1 {
-			children = &o.headlines
+			children = &o.Headlines
 		} else {
 			children = &o.headlineIndex[h.ParentID].Children
 		}
@@ -204,7 +167,7 @@ func (o *outline) childrenSliceFor(ID int) (int, *[]*Headline) {
 }
 
 // Find the "next" Headline after the Headline with ID.  Return nil if no more Headlines are next.
-func (o *outline) nextHeadline(ID int, e *editor) *Headline {
+func (o *Outline) nextHeadline(ID int, e *editor) *Headline {
 	if ID == -1 {
 		return nil
 	}
@@ -216,7 +179,7 @@ func (o *outline) nextHeadline(ID int, e *editor) *Headline {
 }
 
 // Find the "previous" Headline befoire the Headline with ID.  Return nil if no more Headlines are prior.
-func (o *outline) previousHeadline(ID int, e *editor) *Headline {
+func (o *Outline) previousHeadline(ID int, e *editor) *Headline {
 	if ID == -1 {
 		return nil
 	}
@@ -228,7 +191,7 @@ func (o *outline) previousHeadline(ID int, e *editor) *Headline {
 }
 
 // Find the "current" Headline
-func (o *outline) currentHeadline(e *editor) *Headline {
+func (o *Outline) currentHeadline(e *editor) *Headline {
 	return o.headlineIndex[e.currentHeadlineID]
 }
 
@@ -242,7 +205,7 @@ func insertSibling(children *[]*Headline, index int, value *Headline) { //*[]*He
 }
 
 // Find childID in list of children, remove it from the list
-func (o *outline) removeChildFrom(children *[]*Headline, childID int) {
+func (o *Outline) removeChildFrom(children *[]*Headline, childID int) {
 	var i int
 	var c *Headline
 	for i, c = range *children {

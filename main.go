@@ -44,6 +44,7 @@ var dirStyle tcell.Style
 var selectedStyle tcell.Style
 
 var org *organizer
+var ed *editor
 var editorX int = 15 // Column at which editor starts  TODO: MOVE THIS TO editor?
 
 var storageDirectory string
@@ -81,7 +82,7 @@ func renderTopBorder(width int) *[]rune {
 	}
 	row = append(row, fileTitle...)
 	row = append(row, hline)
-	if dirty {
+	if ed.dirty {
 		row = append(row, dirtyFlag)
 	} else {
 		row = append(row, hline)
@@ -103,20 +104,20 @@ func renderBottomBorder(width int) *[]rune {
 }
 
 func setFileTitle(filename string) {
-	fileTitle = append(fileTitle, []rune("Filename: ")...)
+	fileTitle = []rune("Filename: ")
 	fileTitle = append(fileTitle, []rune(filename)...)
 }
 
-func layoutOutline(s tcell.Screen, e *editor, o *outline) {
+func layoutOutline(s tcell.Screen) {
 	y := 1
-	e.lineIndex = []line{}
-	for _, h := range o.headlines {
-		y = layoutHeadline(s, e, o, h, 1, y)
+	ed.lineIndex = []line{}
+	for _, h := range ed.out.Headlines {
+		y = layoutHeadline(s, ed, ed.out, h, 1, y)
 	}
 }
 
 // Format headline text according to indent and word-wrap.  Layout all of its children.
-func layoutHeadline(s tcell.Screen, e *editor, o *outline, h *Headline, level int, y int) int {
+func layoutHeadline(s tcell.Screen, e *editor, o *Outline, h *Headline, level int, y int) int {
 	var bullet rune
 	endY := y
 	if h.Expanded {
@@ -171,20 +172,21 @@ func layoutHeadline(s tcell.Screen, e *editor, o *outline, h *Headline, level in
 }
 
 // Walk thru the lineIndex and render each logical line that is within the window's boundaries
-func renderOutline(s tcell.Screen, e *editor, o *outline) {
+func renderOutline(s tcell.Screen) {
 	y := 1
-	lastLine := e.topLine + e.editorHeight - 1
-	for l := e.topLine; l <= lastLine && l < len(e.lineIndex); l++ {
+	lastLine := ed.topLine + ed.editorHeight - 1
+	for l := ed.topLine; l <= lastLine && l < len(ed.lineIndex); l++ {
 		x := 0
-		line := e.lineIndex[l]
-		runes := (*o.headlineIndex[line.headlineID].Buf.Runes())
+		line := ed.lineIndex[l]
+		h := ed.out.headlineIndex[line.headlineID]
+		runes := (*h.Buf.Runes())
 		s.SetContent(x+line.indent, y, line.bullet, nil, defStyle)
 		for p := line.position; p < line.position+line.length; p++ {
 			// If we're rendering the current position, place cursor here, remember this is current logical line
-			if line.headlineID == e.currentHeadlineID && e.currentPosition == p {
+			if line.headlineID == ed.currentHeadlineID && ed.currentPosition == p {
 				cursX = line.hangingIndent + x
 				cursY = y
-				e.linePtr = l
+				ed.linePtr = l
 			}
 			s.SetContent(x+line.hangingIndent, y, runes[p], nil, defStyle)
 			x++
@@ -193,8 +195,8 @@ func renderOutline(s tcell.Screen, e *editor, o *outline) {
 	}
 }
 
-func genTestOutline(s tcell.Screen, e *editor) *outline {
-	o := newOutline(s, "Sample")
+func genTestOutline(s tcell.Screen, e *editor) *Outline {
+	o := newOutline("Sample")
 	o.addHeadline("What is this odd beast GrandView?", -1)                                                                                                                                                                                                                                                                                                             // 1
 	o.addHeadline("In a single-pane outliner, all the components of your outline and its accompanying information are visible in one window.", 1)                                                                                                                                                                                                                      // 2
 	o.addHeadline("Project and task manager", 2)                                                                                                                                                                                                                                                                                                                       // 3
@@ -215,14 +217,14 @@ func genTestOutline(s tcell.Screen, e *editor) *outline {
 	return o
 }
 
-func drawScreen(s tcell.Screen, e *editor, o *outline) {
+func drawScreen(s tcell.Screen) {
 	width, height := s.Size()
 	s.Clear()
 	drawBorder(s, 0, 0, width, height-1)
 	org.draw(s, height)
-	e.setScreenSize(s)
-	layoutOutline(s, e, o)
-	renderOutline(s, e, o)
+	ed.setScreenSize(s)
+	layoutOutline(s)
+	renderOutline(s)
 	s.ShowCursor(cursX, cursY)
 	s.Show()
 }
@@ -256,7 +258,7 @@ func renderPrompt(s tcell.Screen, cx int, msg string, response string) {
 }
 
 // Prompt the user for some input- blocking main event loop
-func prompt(s tcell.Screen, e *editor, o *outline, msg string) string {
+func prompt(s tcell.Screen, msg string) string {
 	var response []rune
 	var cursX int = len(msg) + 1
 	for {
@@ -264,7 +266,7 @@ func prompt(s tcell.Screen, e *editor, o *outline, msg string) string {
 		switch ev := s.PollEvent().(type) {
 		case *tcell.EventResize:
 			s.Sync()
-			drawScreen(s, e, o)
+			drawScreen(s)
 		case *tcell.EventKey:
 			switch ev.Key() {
 			case tcell.KeyRune:
@@ -347,29 +349,31 @@ func main() {
 		os.Exit(1)
 	}
 
-	o := newOutline(s, "Example")
+	//o := newOutline(s, "Example")
 	org = newOrganizer(directory, height)
 	org.refresh()
-	ed := newEditor(org)
-	if len(os.Args) > 1 {
-		currentFilename = os.Args[1]
-		err := ed.load(currentFilename, o)
-		if err == nil {
-			setFileTitle(currentFilename)
+	ed = newEditor(org)
+
+	/*
+		if len(os.Args) > 1 {
+			currentFilename = os.Args[1]
+			err := ed.load(currentFilename, o)
+			if err == nil {
+				setFileTitle(currentFilename)
+			} else {
+				msg := fmt.Sprintf("Error opening file: %v", err)
+				prompt(s, ed, o, msg)
+			}
 		} else {
-			msg := fmt.Sprintf("Error opening file: %v", err)
-			prompt(s, ed, o, msg)
+			err := o.init(ed)
+			if err != nil {
+				msg := fmt.Sprintf("Error initalizing outline: %v", err)
+				prompt(s, ed, o, msg)
+			}
 		}
-	} else {
-		err := o.init(ed)
-		if err != nil {
-			msg := fmt.Sprintf("Error initalizing outline: %v", err)
-			prompt(s, ed, o, msg)
-		}
-	}
+	*/
+	drawScreen(s)
 
-	drawScreen(s, ed, o)
-
-	ed.handleEvents(s, o)
+	ed.handleEvents(s)
 
 }

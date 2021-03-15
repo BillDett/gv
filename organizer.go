@@ -109,7 +109,7 @@ func (org *organizer) draw(s tcell.Screen, height int) {
 
 // deal with whatever entry was selected
 //  "Open" an outline or directory.  Or create a new outline or directory
-func (org *organizer) entrySelected() {
+func (org *organizer) entrySelected(s tcell.Screen) {
 	if org.currentLine == 0 { // new outline
 
 	} else if org.currentLine == 1 { // new directory
@@ -119,7 +119,7 @@ func (org *organizer) entrySelected() {
 		if entry.isDir {
 
 		} else {
-
+			ed.open(s, entry.filename)
 		}
 	}
 }
@@ -129,7 +129,7 @@ func (org *organizer) dump() {
 	ioutil.WriteFile("orgdump.txt", []byte(out), 0644)
 }
 
-func (org *organizer) handleEvents(s tcell.Screen, o *outline) {
+func (org *organizer) handleEvents(s tcell.Screen, o *Outline) {
 	done := false
 	org.inFocus = true
 	s.HideCursor()
@@ -153,7 +153,7 @@ func (org *organizer) handleEvents(s tcell.Screen, o *outline) {
 					org.draw(s, height)
 				}
 			case tcell.KeyEnter:
-				org.entrySelected()
+				org.entrySelected(s)
 				org.draw(s, height)
 				done = true
 			case tcell.KeyCtrlQ:

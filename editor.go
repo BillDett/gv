@@ -17,15 +17,17 @@ Editor is the main part of the screen, responsible for editing the outline
 */
 
 type editor struct {
-	o                 *outline // Current outline being edited
-	org               *organizer
-	lineIndex         []line // Text Position index for each "line" after editor has been laid out.
-	linePtr           int    // index of the line currently beneath the cursor
-	editorWidth       int    // width of an editor column
-	editorHeight      int    // height of the editor window
-	currentHeadlineID int    // ID of headline cursor is on
-	currentPosition   int    // the current position within the currentHeadline.Buf
-	topLine           int    // index of the topmost "line" of the window in lineIndex
+	org               *organizer // pointer to the organizer
+	out               *Outline   // current outline being edited
+	lineIndex         []line     // Text Position index for each "line" after editor has been laid out.
+	linePtr           int        // index of the line currently beneath the cursor
+	editorWidth       int        // width of an editor column
+	editorHeight      int        // height of the editor window
+	currentHeadlineID int        // ID of headline cursor is on
+	currentPosition   int        // the current position within the currentHeadline.Buf
+	topLine           int        // index of the topmost "line" of the window in lineIndex
+	dirty             bool       // Is the outliine buffer modified since last save?
+
 }
 
 // a line is a logical representation of a line that is rendered in the window
@@ -42,9 +44,6 @@ var currentLine int // which "line" we are currently on
 var cursX int       // X coordinate of the cursor
 var cursY int       // Y coordinate of the cursor
 
-// TODO: MAKE THIS A MEMBER OF editor ITSELF
-var dirty bool = false // Is the outliine buffer modified since last save?
-
 func (e *editor) setScreenSize(s tcell.Screen) {
 	var width int
 	width, height := s.Size()
@@ -53,12 +52,15 @@ func (e *editor) setScreenSize(s tcell.Screen) {
 }
 
 func newEditor(org *organizer) *editor {
-	return &editor{nil, org, nil, 0, 0, 0, 0, 0, 0}
+	o := newOutline("")
+	ed := &editor{org, o, nil, 0, 0, 0, 0, 0, 0, false}
+	o.init(ed)
+	return ed
 }
 
 // save the outline buffer to a file
-func (e *editor) save(filename string, o *outline) error {
-	buf, err := json.Marshal(o)
+func (e *editor) save(filename string) error {
+	buf, err := json.Marshal(ed.out)
 	if err != nil {
 		return err
 	}
@@ -67,26 +69,56 @@ func (e *editor) save(filename string, o *outline) error {
 	return nil
 }
 
+func (e *editor) saveFirst(s tcell.Screen, filename string) bool {
+	response := prompt(s, "Save first (Y/N)?")
+	if response != "" {
+		if strings.ToUpper(response) == "Y" {
+			ed.save(filename)
+		}
+		return true
+	}
+	return false
+}
+
+// user wants to open this outline, save an existing, dirty one first
+func (e *editor) open(s tcell.Screen, filename string) error {
+	proceed := true
+	if e.dirty {
+		// Prompt to save current outline first
+		proceed = e.saveFirst(s, filename)
+	}
+	if proceed {
+		err := ed.load(filename)
+		if err == nil {
+			setFileTitle(filename)
+		} else {
+			msg := fmt.Sprintf("Error opening file: %v", err)
+			prompt(s, msg)
+		}
+	}
+	return nil
+}
+
 // load a .gv file and use it to populate the outline's buffer
-func (e *editor) load(filename string, o *outline) error {
+func (e *editor) load(filename string) error {
 	buf, err := ioutil.ReadFile(org.directory + "/" + filename)
 	if err != nil {
 		return err
 	}
 	// Extract the outline JSON
-	err = json.Unmarshal(buf, &o.headlines)
+	err = json.Unmarshal(buf, &(e.out))
 	if err != nil {
 		return err
 	}
-	if len(o.headlines) == 0 {
+	if len(e.out.Headlines) == 0 {
 		return fmt.Errorf("Error: did not read any headlines from the input file")
 	}
 	// (Re)build the headlineIndex
-	o.headlineIndex = make(map[int]*Headline)
-	for _, h := range o.headlines {
-		o.addHeadlineToIndex(h)
+	e.out.headlineIndex = make(map[int]*Headline)
+	for _, h := range e.out.Headlines {
+		e.out.addHeadlineToIndex(h)
 	}
-	e.currentHeadlineID = o.headlines[0].ID
+	e.currentHeadlineID = e.out.Headlines[0].ID
 	e.currentPosition = 0
 	return nil
 }
@@ -97,7 +129,7 @@ func (e *editor) recordLogicalLine(id int, bullet rune, indent int, hangingInden
 	e.lineIndex = append(e.lineIndex, line{id, bullet, indent, hangingIndent, position, length})
 }
 
-func (e *editor) moveRight(o *outline) {
+func (e *editor) moveRight(o *Outline) {
 	previousHeadlineID := e.currentHeadlineID
 	if e.currentPosition < o.headlineIndex[e.currentHeadlineID].Buf.lastpos-1 { // are we within the text of current Headline?
 		e.currentPosition++
@@ -125,7 +157,7 @@ func (e *editor) moveRight(o *outline) {
 	}
 }
 
-func (e *editor) moveLeft(o *outline) {
+func (e *editor) moveLeft(o *Outline) {
 	if e.currentPosition == 0 && e.linePtr == 0 { // Do nothing if on first character of first headline
 		return
 	} else {
@@ -155,7 +187,7 @@ func (e *editor) moveLeft(o *outline) {
 	}
 }
 
-func (e *editor) moveDown(o *outline) {
+func (e *editor) moveDown(o *Outline) {
 	if e.linePtr != len(e.lineIndex)-1 { // Make sure we're not on last line
 		offset := e.currentPosition - e.lineIndex[e.linePtr].position // how far 'in' are we on the logical line?
 		dbg = offset
@@ -175,7 +207,7 @@ func (e *editor) moveDown(o *outline) {
 	}
 }
 
-func (e *editor) moveUp(o *outline) {
+func (e *editor) moveUp(o *Outline) {
 	if e.linePtr != 0 { // Do nothing if on first logical line
 		offset := e.currentPosition - e.lineIndex[e.linePtr].position // how far 'in' are we on the logical line?
 		newLinePtr := e.linePtr - 1
@@ -196,14 +228,14 @@ func (e *editor) moveUp(o *outline) {
 
 // =============== Editing Methods ================================
 
-func (e *editor) insertRuneAtCurrentPosition(o *outline, r rune) {
+func (e *editor) insertRuneAtCurrentPosition(o *Outline, r rune) {
 	h := o.currentHeadline(e)
 	h.Buf.InsertRunes(e.currentPosition, []rune{r})
 	e.moveRight(o)
 }
 
 // Remove the previous character.  Join this Headline to the previous Headline if on first character
-func (e *editor) backspace(o *outline) {
+func (e *editor) backspace(o *Outline) {
 	if e.currentPosition == 0 && e.linePtr == 0 { // Do nothing if on first character of first headline
 		return
 	} else {
@@ -235,7 +267,7 @@ func (e *editor) backspace(o *outline) {
 }
 
 // delete the character underneath the cursor.  Join the next headline to this one if on last character of headline.
-func (e *editor) delete(o *outline) {
+func (e *editor) delete(o *Outline) {
 	currentHeadline := o.currentHeadline(e)
 	if e.currentPosition != currentHeadline.Buf.lastpos-1 { // Just delete the current position
 		currentHeadline.Buf.Delete(e.currentPosition, 1)
@@ -263,7 +295,7 @@ Enter always creates a new headline at current position at same level as current
 Split the current Headline's text at the cursor point.  Put all text from cursor to end into a
 new Headline that is the next sibling of current Headline.
 */
-func (e *editor) enterPressed(o *outline) {
+func (e *editor) enterPressed(o *Outline) {
 
 	// "Split" current Headline at cursor position and create a new Headline with remaining text
 	currentHeadline := o.currentHeadline(e)
@@ -283,7 +315,7 @@ func (e *editor) enterPressed(o *outline) {
 		insertSibling(&currentHeadline.Children, 0, newHeadline)
 	}
 
-	// Update the o.headlinesIndex
+	// Update the o.HeadlinesIndex
 	o.headlineIndex[newHeadline.ID] = newHeadline
 	e.currentHeadlineID = newHeadline.ID
 	e.currentPosition = 0
@@ -296,7 +328,7 @@ func (e *editor) enterPressed(o *outline) {
 }
 
 //  Promote a Headline further down the outline one level
-func (e *editor) tabPressed(o *outline) {
+func (e *editor) tabPressed(o *Outline) {
 	if e.linePtr != 0 {
 		currentHeadline := o.currentHeadline(e)
 		previousHeadline := o.previousHeadline(e.currentHeadlineID, e)
@@ -317,7 +349,7 @@ func (e *editor) tabPressed(o *outline) {
 }
 
 //  "Demote" a Headline back up the outline one level
-func (e *editor) backTabPressed(o *outline) {
+func (e *editor) backTabPressed(o *Outline) {
 	if e.linePtr != 0 {
 		currentHeadline := o.currentHeadline(e)
 		//previousHeadline := o.previousHeadline(o.currentHeadlineID)
@@ -344,7 +376,7 @@ func (e *editor) backTabPressed(o *outline) {
 
 // Delete the current headline (if we're not on the first headline).  Also delete all children.
 // If on first headline and this is the only headline, remove all of the text (but keep the headline there since we always need at least one headline)
-func (e *editor) deleteHeadline(o *outline) {
+func (e *editor) deleteHeadline(o *Outline) {
 	h := o.currentHeadline(e)
 	p := o.previousHeadline(h.ID, e)
 	if e.linePtr != 0 && p != nil { // Make sure we're not removing first Headline and there are at least two in outline
@@ -371,12 +403,13 @@ func (e *editor) expand() {
 
 }
 
-func (e *editor) handleEvents(s tcell.Screen, o *outline) {
+func (e *editor) handleEvents(s tcell.Screen) {
+	o := ed.out
 	for {
 		switch ev := s.PollEvent().(type) {
 		case *tcell.EventResize:
 			s.Sync()
-			drawScreen(s, e, o)
+			drawScreen(s)
 		case *tcell.EventKey:
 			mod := ev.Modifiers()
 			//fmt.Printf("EventKey Modifiers: %d Key: %d Rune: %v", mod, key, ch)
@@ -387,89 +420,89 @@ func (e *editor) handleEvents(s tcell.Screen, o *outline) {
 				} else {
 					e.moveDown(o)
 				}
-				drawScreen(s, e, o)
+				drawScreen(s)
 			case tcell.KeyUp:
 				if mod == tcell.ModCtrl {
 					e.collapse()
 				} else {
 					e.moveUp(o)
 				}
-				drawScreen(s, e, o)
+				drawScreen(s)
 			case tcell.KeyRight:
 				e.moveRight(o)
-				drawScreen(s, e, o)
+				drawScreen(s)
 			case tcell.KeyLeft:
 				e.moveLeft(o)
-				drawScreen(s, e, o)
+				drawScreen(s)
 			case tcell.KeyBackspace, tcell.KeyBackspace2:
-				dirty = true
+				ed.dirty = true
 				e.backspace(o)
-				drawScreen(s, e, o)
+				drawScreen(s)
 			case tcell.KeyDelete:
-				dirty = true
+				ed.dirty = true
 				e.delete(o)
-				drawScreen(s, e, o)
+				drawScreen(s)
 			case tcell.KeyEnter:
-				dirty = true
+				ed.dirty = true
 				e.enterPressed(o)
-				drawScreen(s, e, o)
+				drawScreen(s)
 			case tcell.KeyTab:
 				e.tabPressed(o)
-				drawScreen(s, e, o)
+				drawScreen(s)
 			case tcell.KeyBacktab:
 				e.backTabPressed(o)
-				drawScreen(s, e, o)
+				drawScreen(s)
 			case tcell.KeyRune:
-				dirty = true
+				ed.dirty = true
 				e.insertRuneAtCurrentPosition(o, ev.Rune())
-				drawScreen(s, e, o)
+				drawScreen(s)
 			case tcell.KeyCtrlD:
 				e.deleteHeadline(o)
-				drawScreen(s, e, o)
+				drawScreen(s)
 			case tcell.KeyCtrlF: // for debugging
 				o.dump(e)
 			case tcell.KeyCtrlS:
 				if currentFilename == "" {
-					f := prompt(s, e, o, "Filename: ")
+					f := prompt(s, "Filename: ")
 					if f != "" {
 						currentFilename = f
-						err := e.save(currentFilename, o)
+						err := e.save(currentFilename)
 						if err == nil {
-							dirty = false
+							ed.dirty = false
 							setFileTitle(currentFilename)
 						} else {
 							msg := fmt.Sprintf("Error saving file: %v", err)
-							prompt(s, e, o, msg)
+							prompt(s, msg)
 						}
 					}
 				} else {
-					dirty = false
-					e.save(currentFilename, o)
+					ed.dirty = false
+					e.save(currentFilename)
 				}
-				drawScreen(s, e, o)
+				drawScreen(s)
 			case tcell.KeyEscape:
 				org.handleEvents(s, o)
-				drawScreen(s, e, o)
+				drawScreen(s)
 			case tcell.KeyCtrlQ:
-				save := prompt(s, e, o, "Outline modified, save [Y|N]? ")
+				save := prompt(s, "Outline modified, save [Y|N]? ")
 				if save == "" {
 					clearPrompt(s)
-					drawScreen(s, e, o)
+					drawScreen(s)
 					break
 				}
 				if strings.ToUpper(save) != "N" {
 					if currentFilename == "" {
-						f := prompt(s, e, o, "Filename: ")
+						f := prompt(s, "Filename: ")
 						if f != "" {
-							e.save(f, o)
+							e.save(f)
 						} else { // skipped setting filename, cancel quit request
 							clearPrompt(s)
-							drawScreen(s, e, o)
+							drawScreen(s)
 							break
 						}
 					} else {
-						e.save(currentFilename, o)
-						drawScreen(s, e, o)
+						e.save(currentFilename)
+						drawScreen(s)
 					}
 				}
 				s.Fini()
