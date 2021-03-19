@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -87,8 +88,10 @@ func (org *organizer) readDirectory() ([]*entry, error) {
 			folders = append(folders, newEntry(info.Name(), info.Name(), true))
 		}
 	}
-	// TODO: We should sort the entries array so that all directories are on top, in alphabetical order
-	//   each.
+	// Sort everything nicely
+	sort.Slice(folders, func(i, j int) bool { return folders[i].name < folders[j].name })
+	sort.Slice(outlines, func(i, j int) bool { return outlines[i].name < outlines[j].name })
+	// Put it together
 	result := []*entry{}
 	if filepath.Clean(org.currentDirectory) != filepath.Clean(org.directory) { // we are in a child folder
 		result = append(result, newEntry("..", "..", true))
@@ -100,6 +103,7 @@ func (org *organizer) readDirectory() ([]*entry, error) {
 
 // draw the visible contents of the organizer
 func (org *organizer) draw(s tcell.Screen, height int) {
+	// TODO: Clear the organizer region first
 	org.height = height - 2
 	y := 1
 	for c := org.topLine; c < len(org.entries); c++ {
@@ -125,7 +129,8 @@ func (org *organizer) draw(s tcell.Screen, height int) {
 
 // deal with whatever entry was selected
 //  "Open" an outline or folder.  Or create a new outline or folder
-func (org *organizer) entrySelected(s tcell.Screen) {
+// Return whether or not we should release Organizer focus
+func (org *organizer) entrySelected(s tcell.Screen) bool {
 	if org.currentLine == 0 { // new outline
 		ed.newOutline(s)
 	} else if org.currentLine == 1 { // new folder
@@ -135,7 +140,6 @@ func (org *organizer) entrySelected(s tcell.Screen) {
 			if err != nil {
 				msg := fmt.Sprintf("Error creating directory %s; %v", f, err)
 				prompt(s, msg)
-				return
 			}
 			org.refresh(s)
 		}
@@ -144,10 +148,12 @@ func (org *organizer) entrySelected(s tcell.Screen) {
 		if entry.isDir {
 			org.currentDirectory = filepath.Join(org.currentDirectory, entry.filename)
 			org.refresh(s)
+			return false
 		} else {
 			ed.open(s, entry.filename)
 		}
 	}
+	return true
 }
 
 func (org *organizer) dump() {
@@ -179,9 +185,8 @@ func (org *organizer) handleEvents(s tcell.Screen, o *Outline) {
 					org.draw(s, height)
 				}
 			case tcell.KeyEnter:
-				org.entrySelected(s)
+				done = org.entrySelected(s)
 				org.draw(s, height)
-				done = true
 			case tcell.KeyCtrlQ:
 				s.Fini()
 				os.Exit(0)

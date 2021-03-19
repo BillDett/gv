@@ -15,6 +15,7 @@ Editor
 * Background saves (set up a semaphore so that edits don't conflict with an in-progress save happening via goroutine)
 
 Organizer
+* Clear organizer region when contents change (e.g. change folder)
 * Scrolling of organizer contents
 * Organizer entries should render outline titles, not filenames
 * Support DELETE To remove outlines and folders (with confirmation)
