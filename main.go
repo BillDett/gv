@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"unicode"
 
@@ -45,7 +47,6 @@ var selectedStyle tcell.Style
 
 var org *organizer
 var ed *editor
-var editorX int = 15 // Column at which editor starts  TODO: MOVE THIS TO editor?
 
 var storageDirectory string
 
@@ -65,7 +66,7 @@ func drawBorder(s tcell.Screen, x, y, width, height int) {
 	// Vertical
 	for by := y + 1; by < y+height-1; by++ {
 		s.SetContent(x, by, vline, nil, defStyle)
-		s.SetContent(editorX, by, vline, nil, defStyle)
+		s.SetContent(organizerWidth, by, vline, nil, defStyle)
 		s.SetContent(x+width-1, by, vline, nil, defStyle)
 	}
 }
@@ -74,7 +75,7 @@ func renderTopBorder(width int) *[]rune {
 	var row []rune
 	titlePos := (width - len(fileTitle)) - 3
 	for p := 0; p < titlePos; p++ {
-		if p == editorX-1 {
+		if p == organizerWidth-1 {
 			row = append(row, tdown)
 		} else {
 			row = append(row, hline)
@@ -94,7 +95,7 @@ func renderTopBorder(width int) *[]rune {
 func renderBottomBorder(width int) *[]rune {
 	var row []rune
 	for p := 0; p < width; p++ {
-		if p == editorX-1 {
+		if p == organizerWidth-1 {
 			row = append(row, tup)
 		} else {
 			row = append(row, hline)
@@ -110,7 +111,14 @@ func setFileTitle(filename string) {
 
 func layoutOutline(s tcell.Screen) {
 	y := 1
-	ed.lineIndex = []line{}
+
+	// clear out lineIndex (avoid a re-allocation)
+	for l := range ed.lineIndex {
+		ed.lineIndex[l] = nil
+	}
+	ed.lineIndex = ed.lineIndex[:0]
+
+	// Layout each Headline
 	for _, h := range ed.out.Headlines {
 		y = layoutHeadline(s, ed, ed.out, h, 1, y)
 	}
@@ -125,7 +133,7 @@ func layoutHeadline(s tcell.Screen, e *editor, o *Outline, h *Headline, level in
 	} else {
 		bullet = solid_bullet
 	}
-	indent := editorX + (level * 3)
+	indent := organizerWidth + (level * 3)
 	hangingIndent := indent + 3
 	text := h.Buf.Runes()
 	pos := 0
@@ -309,6 +317,8 @@ func setupStorage() (string, error) {
 
 func main() {
 
+	go http.ListenAndServe(":8080", http.DefaultServeMux)
+
 	s, e := tcell.NewScreen()
 	if e != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", e)
@@ -349,29 +359,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	//o := newOutline(s, "Example")
 	org = newOrganizer(directory, height)
-	org.refresh()
+	org.refresh(s)
 	ed = newEditor(org)
 
-	/*
-		if len(os.Args) > 1 {
-			currentFilename = os.Args[1]
-			err := ed.load(currentFilename, o)
-			if err == nil {
-				setFileTitle(currentFilename)
-			} else {
-				msg := fmt.Sprintf("Error opening file: %v", err)
-				prompt(s, ed, o, msg)
-			}
-		} else {
-			err := o.init(ed)
-			if err != nil {
-				msg := fmt.Sprintf("Error initalizing outline: %v", err)
-				prompt(s, ed, o, msg)
-			}
-		}
-	*/
 	drawScreen(s)
 
 	ed.handleEvents(s)

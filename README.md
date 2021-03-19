@@ -17,11 +17,11 @@ Editor
 Organizer
 * Scrolling of organizer contents
 * Organizer entries should render outline titles, not filenames
-* When in a sub-folder, add a ".." entry so we can navigate upwards
-* Sort folders separately from outlines
-* Create folder
-* Create Outline
 * Support DELETE To remove outlines and folders (with confirmation)
 
 Bugs
-* CTRL-Q in Editor to quit always prompts to save (even when buffer isn't dirty) 
+* Editor flickers a lot during cursor movement or scrolling.  Layout/Render algorithm could use some optimizations 
+    * When we move the cursor and aren't scrolling, we don't have to redraw the whole screen...
+    * Just layout one Headline at a time (without children) when we know we're just changing text?
+    * It looks like tcell is optimizing and only redrawing changed cells.  So it might make sense to just update the
+      cursor unless we are scrolling the page or actually editing text.

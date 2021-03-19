@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -30,13 +31,14 @@ Delete on a folder does nothing.
 */
 
 type organizer struct {
-	directory   string // where is Organizer looking for outline files?
-	width       int    // width of the Organizer
-	height      int    // height of the Organizer
-	entries     []*entry
-	currentLine int  // the current position within the list of outlines
-	topLine     int  // index of the topmost outline of the Organizer
-	inFocus     bool // Is the organizer currently in focus?
+	directory        string // where is Organizer looking for outline files?
+	currentDirectory string // what directory are we currently in?
+	width            int    // width of the Organizer
+	height           int    // height of the Organizer
+	entries          []*entry
+	currentLine      int  // the current position within the list of outlines
+	topLine          int  // index of the topmost outline of the Organizer
+	inFocus          bool // Is the organizer currently in focus?
 }
 
 type entry struct {
@@ -53,33 +55,47 @@ func newEntry(n string, f string, d bool) *entry {
 
 func newOrganizer(directory string, height int) *organizer {
 	// TODO: We should look in $GVHOME or $HOME/.gv/outlines
-	return &organizer{directory, organizerWidth, height, nil, 0, 0, false}
+	return &organizer{directory, directory, organizerWidth, height, nil, 0, 0, false}
 }
 
-func (org *organizer) refresh() {
+func (org *organizer) refresh(s tcell.Screen) {
 	org.entries = []*entry{}
 	org.entries = append(org.entries, newEntry("New Outline", "", false))
 	org.entries = append(org.entries, newEntry("New Folder", "", false))
-	org.readDirectory()
+	contents, err := org.readDirectory()
+	if err != nil {
+		msg := fmt.Sprintf("Error reading storage; %v", err)
+		prompt(s, msg)
+		return
+	}
+	org.entries = append(org.entries, contents...)
 }
 
-func (org *organizer) readDirectory() error {
-	files, err := ioutil.ReadDir(org.directory)
+func (org *organizer) readDirectory() ([]*entry, error) {
+	files, err := ioutil.ReadDir(org.currentDirectory)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	outlines := []*entry{}
+	folders := []*entry{}
 	for _, info := range files {
 		if info.Mode().IsRegular() {
 			if strings.HasSuffix(info.Name(), ".gv") {
-				org.entries = append(org.entries, newEntry(info.Name(), info.Name(), false))
+				outlines = append(outlines, newEntry(info.Name(), info.Name(), false))
 			}
 		} else if info.Mode().IsDir() && !strings.HasPrefix(info.Name(), ".") {
-			org.entries = append(org.entries, newEntry(info.Name(), info.Name(), true))
+			folders = append(folders, newEntry(info.Name(), info.Name(), true))
 		}
 	}
 	// TODO: We should sort the entries array so that all directories are on top, in alphabetical order
 	//   each.
-	return nil
+	result := []*entry{}
+	if filepath.Clean(org.currentDirectory) != filepath.Clean(org.directory) { // we are in a child folder
+		result = append(result, newEntry("..", "..", true))
+	}
+	result = append(result, folders...)
+	result = append(result, outlines...)
+	return result, nil
 }
 
 // draw the visible contents of the organizer
@@ -108,16 +124,26 @@ func (org *organizer) draw(s tcell.Screen, height int) {
 }
 
 // deal with whatever entry was selected
-//  "Open" an outline or directory.  Or create a new outline or directory
+//  "Open" an outline or folder.  Or create a new outline or folder
 func (org *organizer) entrySelected(s tcell.Screen) {
 	if org.currentLine == 0 { // new outline
-
-	} else if org.currentLine == 1 { // new directory
-
-	} else { // open a file or directory
+		ed.newOutline(s)
+	} else if org.currentLine == 1 { // new folder
+		f := prompt(s, "Enter new Folder name: ")
+		if f != "" {
+			err := os.Mkdir(filepath.Join(org.currentDirectory, f), 0700)
+			if err != nil {
+				msg := fmt.Sprintf("Error creating directory %s; %v", f, err)
+				prompt(s, msg)
+				return
+			}
+			org.refresh(s)
+		}
+	} else { // open a file or folder
 		entry := org.entries[org.currentLine]
 		if entry.isDir {
-
+			org.currentDirectory = filepath.Join(org.currentDirectory, entry.filename)
+			org.refresh(s)
 		} else {
 			ed.open(s, entry.filename)
 		}

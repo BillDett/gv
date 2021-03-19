@@ -7,9 +7,10 @@ import (
 
 /*
 
-We have conflated the concepts of the outline and the editor into a single struct...really need to break that
-apart so we are saving just the outline to disk, but passing the editor around as well.
-
+Outline is the heart of the application.  Provides all necessary methods to manage and manipulate Headlines as part of
+an overall outline structure.  We also hold onto the headlineIndex which is the master 'database' of all Headlines keyed
+by ID.  The headlineIndex makes it fast to find any Headline that has been created without having to traverse the outline
+each time.
 */
 
 type Outline struct {
@@ -116,8 +117,8 @@ func nextHeadlineID(headlines map[int]*Headline) int {
 }
 
 // Return the IDs of the Headlines just before and after the Headline at given ID.  Return -1 for either if at beginning or end of outline.
-// We leverage the fact that o.lineIndex is really a 'flattened' DFS list of Headlines, so it has the ordered list of Headlines
-//  TODO: THIS FORCES A COUPLING BETWEEN THE editor AND THE outline THAT IS ARTIFICIAL...
+// We leverage the fact that e.lineIndex is really a 'flattened' DFS list of Headlines, so it has the ordered list of Headlines
+//   (ideally we would not need a reference to the editor here, but it saves us from having to maintain our own structure)
 func (o *Outline) prevNextFrom(ID int, e *editor) (int, int) {
 	previous := -1
 	next := -1
@@ -145,7 +146,7 @@ func (o *Outline) prevNextFrom(ID int, e *editor) (int, int) {
 	return previous, next
 }
 
-// Look up the index in the []*Headline where this Headline is being managed by its parent
+// Get the 'parent' slice where the Headline with ID is held.  Also return ID's index in that slice.
 func (o *Outline) childrenSliceFor(ID int) (int, *[]*Headline) {
 	index := -1
 	var children *[]*Headline

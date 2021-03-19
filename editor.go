@@ -12,14 +12,17 @@ import (
 
 /*
 
-Editor is the main part of the screen, responsible for editing the outline
+Editor is the main part of the screen, responsible for editing the outline.  It also contains the lineIndex
+which acts like a 'render buffer' of logical lines of text that have been laid out within the boundary of
+the editor's window.
+
 
 */
 
 type editor struct {
 	org               *organizer // pointer to the organizer
 	out               *Outline   // current outline being edited
-	lineIndex         []line     // Text Position index for each "line" after editor has been laid out.
+	lineIndex         []*line    // Text Position index for each "line" after editor has been laid out.
 	linePtr           int        // index of the line currently beneath the cursor
 	editorWidth       int        // width of an editor column
 	editorHeight      int        // height of the editor window
@@ -65,19 +68,54 @@ func (e *editor) save(filename string) error {
 		return err
 	}
 	ioutil.WriteFile(org.directory+"/"+filename, buf, 0644)
-	org.refresh()
 	return nil
 }
 
-func (e *editor) saveFirst(s tcell.Screen, filename string) bool {
+// User is about to change editor contents or quit, see if they want to save current editor first.
+func (e *editor) saveFirst(s tcell.Screen) bool {
 	response := prompt(s, "Save first (Y/N)?")
 	if response != "" {
 		if strings.ToUpper(response) == "Y" {
-			ed.save(filename)
+			if currentFilename != "" {
+				e.save(currentFilename)
+			} else {
+				f := prompt(s, "Filename: ")
+				if f != "" {
+					currentFilename = f
+					err := e.save(currentFilename)
+					if err == nil {
+						e.dirty = false
+						setFileTitle(currentFilename)
+						org.refresh(s)
+					} else {
+						msg := fmt.Sprintf("Error saving file: %v", err)
+						prompt(s, msg)
+					}
+				}
+			}
 		}
 		return true
 	}
 	return false
+}
+
+// user wants to create a new outline, save an existing, dirty one first
+func (e *editor) newOutline(s tcell.Screen) error {
+	proceed := true
+	if e.dirty {
+		// Prompt to save current outline first
+		proceed = e.saveFirst(s)
+	}
+	if proceed {
+		e.out = newOutline("")
+		e.out.init(e)
+		e.linePtr = 0
+		e.topLine = 0
+		e.dirty = false
+		currentFilename = ""
+		setFileTitle(currentFilename)
+	}
+	return nil
 }
 
 // user wants to open this outline, save an existing, dirty one first
@@ -85,7 +123,7 @@ func (e *editor) open(s tcell.Screen, filename string) error {
 	proceed := true
 	if e.dirty {
 		// Prompt to save current outline first
-		proceed = e.saveFirst(s, filename)
+		proceed = e.saveFirst(s)
 	}
 	if proceed {
 		err := ed.load(filename)
@@ -95,6 +133,7 @@ func (e *editor) open(s tcell.Screen, filename string) error {
 			msg := fmt.Sprintf("Error opening file: %v", err)
 			prompt(s, msg)
 		}
+		currentFilename = filename
 	}
 	return nil
 }
@@ -106,6 +145,7 @@ func (e *editor) load(filename string) error {
 		return err
 	}
 	// Extract the outline JSON
+	e.out = nil
 	err = json.Unmarshal(buf, &(e.out))
 	if err != nil {
 		return err
@@ -120,21 +160,22 @@ func (e *editor) load(filename string) error {
 	}
 	e.currentHeadlineID = e.out.Headlines[0].ID
 	e.currentPosition = 0
+	e.dirty = false
 	return nil
 }
 
 // Store a 'logical' line- this is a rendered line of text on the screen. We use this index
 // to figure out where in the outline buffer to move to when we navigate visually
 func (e *editor) recordLogicalLine(id int, bullet rune, indent int, hangingIndent int, position int, length int) {
-	e.lineIndex = append(e.lineIndex, line{id, bullet, indent, hangingIndent, position, length})
+	e.lineIndex = append(e.lineIndex, &line{id, bullet, indent, hangingIndent, position, length})
 }
 
-func (e *editor) moveRight(o *Outline) {
+func (e *editor) moveRight() {
 	previousHeadlineID := e.currentHeadlineID
-	if e.currentPosition < o.headlineIndex[e.currentHeadlineID].Buf.lastpos-1 { // are we within the text of current Headline?
+	if e.currentPosition < e.out.headlineIndex[e.currentHeadlineID].Buf.lastpos-1 { // are we within the text of current Headline?
 		e.currentPosition++
 	} else { // move to the first character of next Headline (if one exists)
-		h := o.nextHeadline(e.currentHeadlineID, e)
+		h := e.out.nextHeadline(e.currentHeadlineID, e)
 		if h != nil {
 			e.currentHeadlineID = h.ID
 			e.currentPosition = 0
@@ -157,7 +198,7 @@ func (e *editor) moveRight(o *Outline) {
 	}
 }
 
-func (e *editor) moveLeft(o *Outline) {
+func (e *editor) moveLeft() {
 	if e.currentPosition == 0 && e.linePtr == 0 { // Do nothing if on first character of first headline
 		return
 	} else {
@@ -165,7 +206,7 @@ func (e *editor) moveLeft(o *Outline) {
 		if e.currentPosition > 0 { // Just move to previous character in this headline
 			e.currentPosition--
 		} else { // at first character of current headline, move to end of previous headline
-			p := o.previousHeadline(e.currentHeadlineID, e)
+			p := e.out.previousHeadline(e.currentHeadlineID, e)
 			if p != nil {
 				e.currentHeadlineID = p.ID
 				e.currentPosition = p.Buf.lastpos - 1
@@ -187,7 +228,7 @@ func (e *editor) moveLeft(o *Outline) {
 	}
 }
 
-func (e *editor) moveDown(o *Outline) {
+func (e *editor) moveDown() {
 	if e.linePtr != len(e.lineIndex)-1 { // Make sure we're not on last line
 		offset := e.currentPosition - e.lineIndex[e.linePtr].position // how far 'in' are we on the logical line?
 		dbg = offset
@@ -207,7 +248,7 @@ func (e *editor) moveDown(o *Outline) {
 	}
 }
 
-func (e *editor) moveUp(o *Outline) {
+func (e *editor) moveUp() {
 	if e.linePtr != 0 { // Do nothing if on first logical line
 		offset := e.currentPosition - e.lineIndex[e.linePtr].position // how far 'in' are we on the logical line?
 		newLinePtr := e.linePtr - 1
@@ -231,7 +272,7 @@ func (e *editor) moveUp(o *Outline) {
 func (e *editor) insertRuneAtCurrentPosition(o *Outline, r rune) {
 	h := o.currentHeadline(e)
 	h.Buf.InsertRunes(e.currentPosition, []rune{r})
-	e.moveRight(o)
+	e.moveRight()
 }
 
 // Remove the previous character.  Join this Headline to the previous Headline if on first character
@@ -243,7 +284,7 @@ func (e *editor) backspace(o *Outline) {
 		if e.currentPosition > 0 { // Remove previous character
 			posToRemove := e.currentPosition - 1
 			currentHeadline.Buf.Delete(posToRemove, 1)
-			e.moveLeft(o)
+			e.moveLeft()
 		} else { // Join this headline with previous one
 			previousHeadline := o.previousHeadline(currentHeadline.ID, e)
 			if previousHeadline != nil {
@@ -403,8 +444,18 @@ func (e *editor) expand() {
 
 }
 
+// Experimental test- how fast can we blank out the editor window?
+func (e *editor) blankEditor(s tcell.Screen) {
+	offset := organizerWidth + 2
+	for y := 1; y < e.editorHeight; y++ {
+		for x := offset; x < offset+e.editorWidth; x++ {
+			s.SetContent(x, y, ' ', nil, defStyle)
+		}
+	}
+	s.Show()
+}
+
 func (e *editor) handleEvents(s tcell.Screen) {
-	o := ed.out
 	for {
 		switch ev := s.PollEvent().(type) {
 		case *tcell.EventResize:
@@ -418,49 +469,51 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				if mod == tcell.ModCtrl {
 					e.expand()
 				} else {
-					e.moveDown(o)
+					e.moveDown()
 				}
 				drawScreen(s)
 			case tcell.KeyUp:
 				if mod == tcell.ModCtrl {
 					e.collapse()
 				} else {
-					e.moveUp(o)
+					e.moveUp()
 				}
 				drawScreen(s)
 			case tcell.KeyRight:
-				e.moveRight(o)
+				e.moveRight()
 				drawScreen(s)
 			case tcell.KeyLeft:
-				e.moveLeft(o)
+				e.moveLeft()
 				drawScreen(s)
 			case tcell.KeyBackspace, tcell.KeyBackspace2:
-				ed.dirty = true
-				e.backspace(o)
+				e.dirty = true
+				e.backspace(e.out)
 				drawScreen(s)
 			case tcell.KeyDelete:
-				ed.dirty = true
-				e.delete(o)
+				e.dirty = true
+				e.delete(e.out)
 				drawScreen(s)
 			case tcell.KeyEnter:
-				ed.dirty = true
-				e.enterPressed(o)
+				e.dirty = true
+				e.enterPressed(e.out)
 				drawScreen(s)
 			case tcell.KeyTab:
-				e.tabPressed(o)
+				e.tabPressed(e.out)
 				drawScreen(s)
 			case tcell.KeyBacktab:
-				e.backTabPressed(o)
+				e.backTabPressed(e.out)
 				drawScreen(s)
 			case tcell.KeyRune:
-				ed.dirty = true
-				e.insertRuneAtCurrentPosition(o, ev.Rune())
+				e.dirty = true
+				e.insertRuneAtCurrentPosition(e.out, ev.Rune())
 				drawScreen(s)
 			case tcell.KeyCtrlD:
-				e.deleteHeadline(o)
+				e.deleteHeadline(e.out)
 				drawScreen(s)
+			case tcell.KeyCtrlB: // Experimental!
+				e.blankEditor(s)
 			case tcell.KeyCtrlF: // for debugging
-				o.dump(e)
+				e.out.dump(e)
 			case tcell.KeyCtrlS:
 				if currentFilename == "" {
 					f := prompt(s, "Filename: ")
@@ -468,7 +521,7 @@ func (e *editor) handleEvents(s tcell.Screen) {
 						currentFilename = f
 						err := e.save(currentFilename)
 						if err == nil {
-							ed.dirty = false
+							e.dirty = false
 							setFileTitle(currentFilename)
 						} else {
 							msg := fmt.Sprintf("Error saving file: %v", err)
@@ -476,33 +529,36 @@ func (e *editor) handleEvents(s tcell.Screen) {
 						}
 					}
 				} else {
-					ed.dirty = false
+					e.dirty = false
 					e.save(currentFilename)
 				}
+				org.refresh(s)
 				drawScreen(s)
 			case tcell.KeyEscape:
-				org.handleEvents(s, o)
+				org.handleEvents(s, e.out)
 				drawScreen(s)
 			case tcell.KeyCtrlQ:
-				save := prompt(s, "Outline modified, save [Y|N]? ")
-				if save == "" {
-					clearPrompt(s)
-					drawScreen(s)
-					break
-				}
-				if strings.ToUpper(save) != "N" {
-					if currentFilename == "" {
-						f := prompt(s, "Filename: ")
-						if f != "" {
-							e.save(f)
-						} else { // skipped setting filename, cancel quit request
-							clearPrompt(s)
-							drawScreen(s)
-							break
-						}
-					} else {
-						e.save(currentFilename)
+				if ed.dirty {
+					save := prompt(s, "Outline modified, save [Y|N]? ")
+					if save == "" {
+						clearPrompt(s)
 						drawScreen(s)
+						break
+					}
+					if strings.ToUpper(save) != "N" {
+						if currentFilename == "" {
+							f := prompt(s, "Filename: ")
+							if f != "" {
+								e.save(f)
+							} else { // skipped setting filename, cancel quit request
+								clearPrompt(s)
+								drawScreen(s)
+								break
+							}
+						} else {
+							e.save(currentFilename)
+							drawScreen(s)
+						}
 					}
 				}
 				s.Fini()
