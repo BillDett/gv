@@ -48,7 +48,7 @@ type entry struct {
 	isDir    bool
 }
 
-var organizerWidth int = 15
+var organizerWidth int = 20
 
 func newEntry(n string, f string, d bool) *entry {
 	return &entry{n, f, d}
@@ -101,10 +101,20 @@ func (org *organizer) readDirectory() ([]*entry, error) {
 	return result, nil
 }
 
+// Clear out the contents of the organizer's window
+//  We depend on the caller to eventually do s.Show()
+func (org *organizer) clear(s tcell.Screen) {
+	for y := 1; y < ed.editorHeight; y++ {
+		for x := 1; x < org.width; x++ {
+			s.SetContent(x, y, ' ', nil, defStyle)
+		}
+	}
+}
+
 // draw the visible contents of the organizer
-func (org *organizer) draw(s tcell.Screen, height int) {
-	// TODO: Clear the organizer region first
-	org.height = height - 2
+func (org *organizer) draw(s tcell.Screen) {
+	org.height = screenHeight - 2
+	width := org.width - 1
 	y := 1
 	for c := org.topLine; c < len(org.entries); c++ {
 		if y < org.height {
@@ -117,7 +127,10 @@ func (org *organizer) draw(s tcell.Screen, height int) {
 				style = dirStyle
 			}
 			for x, r := range org.entries[c].name {
-				if x < org.width {
+				if x < width {
+					if x == width-1 { // probably will go over width of organizer, just use an ellipsis
+						r = ellipsis
+					}
 					s.SetContent(1+x, y, r, nil, style)
 				}
 			}
@@ -141,12 +154,14 @@ func (org *organizer) entrySelected(s tcell.Screen) bool {
 				msg := fmt.Sprintf("Error creating directory %s; %v", f, err)
 				prompt(s, msg)
 			}
+			org.clear(s)
 			org.refresh(s)
 		}
 	} else { // open a file or folder
 		entry := org.entries[org.currentLine]
 		if entry.isDir {
 			org.currentDirectory = filepath.Join(org.currentDirectory, entry.filename)
+			org.clear(s)
 			org.refresh(s)
 			return false
 		} else {
@@ -165,28 +180,28 @@ func (org *organizer) handleEvents(s tcell.Screen, o *Outline) {
 	done := false
 	org.inFocus = true
 	s.HideCursor()
-	org.draw(s, org.height)
+	org.draw(s)
 	for !done {
-		_, height := s.Size()
 		switch ev := s.PollEvent().(type) {
 		case *tcell.EventResize:
 			s.Sync()
-			org.draw(s, height)
+			screenWidth, screenHeight = s.Size()
+			org.draw(s)
 		case *tcell.EventKey:
 			switch ev.Key() {
 			case tcell.KeyDown:
 				if org.currentLine < len(org.entries)-1 {
 					org.currentLine++
-					org.draw(s, org.height)
+					org.draw(s)
 				}
 			case tcell.KeyUp:
 				if org.currentLine != 0 {
 					org.currentLine--
-					org.draw(s, height)
+					org.draw(s)
 				}
 			case tcell.KeyEnter:
 				done = org.entrySelected(s)
-				org.draw(s, height)
+				org.draw(s)
 			case tcell.KeyCtrlQ:
 				s.Fini()
 				os.Exit(0)

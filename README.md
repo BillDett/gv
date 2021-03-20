@@ -15,14 +15,11 @@ Editor
 * Background saves (set up a semaphore so that edits don't conflict with an in-progress save happening via goroutine)
 
 Organizer
-* Clear organizer region when contents change (e.g. change folder)
 * Scrolling of organizer contents
+* Need a better way to indicate what folder we're currently in- set as title of organizer?
+* The New Outline and New Folder "buttons" are kind of clunky...is there a better way to do this?
 * Organizer entries should render outline titles, not filenames
 * Support DELETE To remove outlines and folders (with confirmation)
 
 Bugs
-* Editor flickers a lot during cursor movement or scrolling.  Layout/Render algorithm could use some optimizations 
-    * When we move the cursor and aren't scrolling, we don't have to redraw the whole screen...
-    * Just layout one Headline at a time (without children) when we know we're just changing text?
-    * It looks like tcell is optimizing and only redrawing changed cells.  So it might make sense to just update the
-      cursor unless we are scrolling the page or actually editing text.
+* When saving/loading multiple times it seems like the editor gets out of sync & starts adding siblings as children.  Something is not being updated correctly.

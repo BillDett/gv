@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"unicode"
@@ -13,6 +12,9 @@ import (
 var currentFilename string
 
 var fileTitle []rune
+
+var screenWidth int
+var screenHeight int
 
 // Standard line drawing characters
 const tlcorner = '\u250c'
@@ -226,10 +228,9 @@ func genTestOutline(s tcell.Screen, e *editor) *Outline {
 }
 
 func drawScreen(s tcell.Screen) {
-	width, height := s.Size()
 	s.Clear()
-	drawBorder(s, 0, 0, width, height-1)
-	org.draw(s, height)
+	drawBorder(s, 0, 0, screenWidth, screenHeight-1)
+	org.draw(s)
 	ed.setScreenSize(s)
 	layoutOutline(s)
 	renderOutline(s)
@@ -274,6 +275,7 @@ func prompt(s tcell.Screen, msg string) string {
 		switch ev := s.PollEvent().(type) {
 		case *tcell.EventResize:
 			s.Sync()
+			screenWidth, screenHeight = s.Size()
 			drawScreen(s)
 		case *tcell.EventKey:
 			switch ev.Key() {
@@ -317,8 +319,6 @@ func setupStorage() (string, error) {
 
 func main() {
 
-	go http.ListenAndServe(":8080", http.DefaultServeMux)
-
 	s, e := tcell.NewScreen()
 	if e != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", e)
@@ -328,6 +328,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%v\n", e)
 		os.Exit(1)
 	}
+
+	screenWidth, screenHeight = s.Size()
 
 	defStyle = tcell.StyleDefault.
 		Background(tcell.ColorBlack).

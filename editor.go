@@ -228,7 +228,7 @@ func (e *editor) moveLeft() {
 	}
 }
 
-func (e *editor) moveDown() {
+func (e *editor) moveDown() bool {
 	if e.linePtr != len(e.lineIndex)-1 { // Make sure we're not on last line
 		offset := e.currentPosition - e.lineIndex[e.linePtr].position // how far 'in' are we on the logical line?
 		dbg = offset
@@ -244,8 +244,10 @@ func (e *editor) moveDown() {
 		// Scroll?
 		if e.linePtr-e.topLine+1 >= e.editorHeight {
 			e.topLine++
+			return true
 		}
 	}
+	return false
 }
 
 func (e *editor) moveUp() {
@@ -444,14 +446,22 @@ func (e *editor) expand() {
 
 }
 
-// Experimental test- how fast can we blank out the editor window?
-func (e *editor) blankEditor(s tcell.Screen) {
+// Clear out the contents of the organizer's window
+//  We depend on the caller to eventually do s.Show()
+func (e *editor) clear(s tcell.Screen) {
 	offset := organizerWidth + 2
-	for y := 1; y < e.editorHeight; y++ {
-		for x := offset; x < offset+e.editorWidth; x++ {
+	for y := 1; y < screenHeight-2; y++ {
+		for x := offset; x < screenWidth-1; x++ {
 			s.SetContent(x, y, ' ', nil, defStyle)
 		}
 	}
+}
+
+func (e *editor) draw(s tcell.Screen) {
+	layoutOutline(s)
+	e.clear(s)
+	renderOutline(s)
+	s.ShowCursor(cursX, cursY)
 	s.Show()
 }
 
@@ -460,6 +470,7 @@ func (e *editor) handleEvents(s tcell.Screen) {
 		switch ev := s.PollEvent().(type) {
 		case *tcell.EventResize:
 			s.Sync()
+			screenWidth, screenHeight = s.Size()
 			drawScreen(s)
 		case *tcell.EventKey:
 			mod := ev.Modifiers()
@@ -470,48 +481,49 @@ func (e *editor) handleEvents(s tcell.Screen) {
 					e.expand()
 				} else {
 					e.moveDown()
+					e.draw(s)
 				}
-				drawScreen(s)
+				//drawScreen(s)
 			case tcell.KeyUp:
 				if mod == tcell.ModCtrl {
 					e.collapse()
 				} else {
 					e.moveUp()
+					e.draw(s)
 				}
-				drawScreen(s)
 			case tcell.KeyRight:
 				e.moveRight()
-				drawScreen(s)
+				e.draw(s)
 			case tcell.KeyLeft:
 				e.moveLeft()
-				drawScreen(s)
+				e.draw(s)
 			case tcell.KeyBackspace, tcell.KeyBackspace2:
 				e.dirty = true
 				e.backspace(e.out)
-				drawScreen(s)
+				e.draw(s)
 			case tcell.KeyDelete:
 				e.dirty = true
 				e.delete(e.out)
-				drawScreen(s)
+				e.draw(s)
 			case tcell.KeyEnter:
 				e.dirty = true
 				e.enterPressed(e.out)
-				drawScreen(s)
+				e.draw(s)
 			case tcell.KeyTab:
 				e.tabPressed(e.out)
-				drawScreen(s)
+				e.draw(s)
 			case tcell.KeyBacktab:
 				e.backTabPressed(e.out)
-				drawScreen(s)
+				e.draw(s)
 			case tcell.KeyRune:
 				e.dirty = true
 				e.insertRuneAtCurrentPosition(e.out, ev.Rune())
-				drawScreen(s)
+				e.draw(s)
 			case tcell.KeyCtrlD:
 				e.deleteHeadline(e.out)
-				drawScreen(s)
+				e.draw(s)
 			case tcell.KeyCtrlB: // Experimental!
-				e.blankEditor(s)
+				e.clear(s)
 			case tcell.KeyCtrlF: // for debugging
 				e.out.dump(e)
 			case tcell.KeyCtrlS:
