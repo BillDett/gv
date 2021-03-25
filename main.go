@@ -4,6 +4,7 @@ import (
 	"fmt"
 	_ "net/http/pprof"
 	"os"
+	"path/filepath"
 	"unicode"
 
 	"github.com/gdamore/tcell/v2"
@@ -58,8 +59,13 @@ func drawBorder(s tcell.Screen, x, y, width, height int) {
 	s.SetContent(x+width-1, y, trcorner, nil, defStyle)
 	s.SetContent(x, y+height-1, llcorner, nil, defStyle)
 	s.SetContent(x+width-1, y+height-1, lrcorner, nil, defStyle)
-	tb := renderTopBorder(width - 2)
+	tb := renderTopBorder()
 	bb := renderBottomBorder(width - 2)
+	if len(*tb) != len(*bb) {
+		fmt.Printf("Border Error! Screen is %d and org is %d and TB is %d and BB is %d\n",
+			screenWidth, org.width, len(*tb), len(*bb))
+		os.Exit(1)
+	}
 	// Horizontal
 	for bx := 0; bx < len(*tb); bx++ {
 		s.SetContent(bx+x+1, y, (*tb)[bx], nil, defStyle)
@@ -68,40 +74,69 @@ func drawBorder(s tcell.Screen, x, y, width, height int) {
 	// Vertical
 	for by := y + 1; by < y+height-1; by++ {
 		s.SetContent(x, by, vline, nil, defStyle)
-		s.SetContent(organizerWidth, by, vline, nil, defStyle)
+		s.SetContent(org.width+1, by, vline, nil, defStyle)
 		s.SetContent(x+width-1, by, vline, nil, defStyle)
 	}
 }
 
-func renderTopBorder(width int) *[]rune {
-	var row []rune
-	titlePos := (width - len(fileTitle)) - 3
-	for p := 0; p < titlePos; p++ {
-		if p == organizerWidth-1 {
-			row = append(row, tdown)
-		} else {
-			row = append(row, hline)
-		}
+// Render and re-draw the top border
+func drawTopBorder(s tcell.Screen) {
+	tb := renderTopBorder()
+	for bx := 1; bx < len(*tb); bx++ {
+		s.SetContent(bx+1, 0, (*tb)[bx], nil, defStyle)
 	}
-	row = append(row, fileTitle...)
+	s.Show()
+}
+
+func renderTopBorder() *[]rune {
+	var row []rune
+
+	// Organizer
+	foldername := []rune(filepath.Base(org.currentDirectory)) // TODO: Ensure this is < org.width-3
+	if len(foldername) > org.width-3 {
+		foldername = foldername[:org.width-4]
+		foldername = append(foldername, ellipsis)
+	}
+	row = append(row, hline)
+	row = append(row, '[')
+	row = append(row, foldername...)
+	row = append(row, ']')
+	for p := len(row); p < org.width; p++ {
+		row = append(row, hline)
+	}
+	row = append(row, tdown)
+
+	// Editor
+	titleRunes := []rune(ed.out.Title)
+	row = append(row, hline)
+	row = append(row, '[')
+	row = append(row, titleRunes...)
+	row = append(row, ']')
+	for p := len(row); p < screenWidth-2; p++ {
+		row = append(row, hline)
+	}
+
+	return &row
+}
+
+func renderBottomBorder(width int) *[]rune {
+	var row []rune
+	for p := 1; p < org.width+1; p++ {
+		row = append(row, hline)
+	}
+	row = append(row, tup)
+	row = append(row, hline)
+	row = append(row, '[')
+	row = append(row, []rune(currentFilename)...)
+	row = append(row, ']')
 	row = append(row, hline)
 	if ed.dirty {
 		row = append(row, dirtyFlag)
 	} else {
 		row = append(row, hline)
 	}
-	row = append(row, hline)
-	return &row
-}
-
-func renderBottomBorder(width int) *[]rune {
-	var row []rune
-	for p := 0; p < width; p++ {
-		if p == organizerWidth-1 {
-			row = append(row, tup)
-		} else {
-			row = append(row, hline)
-		}
+	for p := len(row); p < screenWidth-2; p++ {
+		row = append(row, hline)
 	}
 	return &row
 }

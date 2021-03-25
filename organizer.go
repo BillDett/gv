@@ -163,6 +163,7 @@ func (org *organizer) entrySelected(s tcell.Screen) bool {
 			org.currentDirectory = filepath.Join(org.currentDirectory, entry.filename)
 			org.clear(s)
 			org.refresh(s)
+			drawTopBorder(s)
 			return false
 		} else {
 			ed.open(s, entry.filename)
@@ -186,7 +187,8 @@ func (org *organizer) handleEvents(s tcell.Screen, o *Outline) {
 		case *tcell.EventResize:
 			s.Sync()
 			screenWidth, screenHeight = s.Size()
-			org.draw(s)
+			drawScreen(s)
+			s.HideCursor()
 		case *tcell.EventKey:
 			switch ev.Key() {
 			case tcell.KeyDown:
