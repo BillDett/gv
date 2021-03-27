@@ -68,9 +68,10 @@ func (o *Outline) dump(e *editor) {
 	text := (*o.headlineIndex[e.currentHeadlineID].Buf.Runes())
 	out := "Headline and children\n"
 	//i, c := o.childrenSliceFor(13)
-	for _, h := range o.Headlines {
-		out += h.toString(0) + "\n"
-	}
+	//for _, h := range o.Headlines {
+	//	out += h.toString(0) + "\n"
+	//}
+	out += fmt.Sprintf("\nscreen width %d, org width %d, editor width %d\n", screenWidth, e.org.width, e.editorWidth)
 	out += fmt.Sprintf("\nlinePtr %d, currentHeadline %d, currentPosition %d, current Rune (%#U) num Headlines %d, dbg %d, dbg2 %d\n",
 		e.linePtr, e.currentHeadlineID, e.currentPosition, text[e.currentPosition], len(o.headlineIndex), dbg, dbg2)
 	ioutil.WriteFile("dump.txt", []byte(out), 0644)

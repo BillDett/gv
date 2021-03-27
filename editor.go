@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -50,7 +51,7 @@ var cursY int       // Y coordinate of the cursor
 func (e *editor) setScreenSize(s tcell.Screen) {
 	var width int
 	width, height := s.Size()
-	e.editorWidth = int(float64(width) * 0.7)
+	e.editorWidth = int(float64(width-e.org.width-3) * 0.9)
 	e.editorHeight = height - 3 // 2 rows for border, 1 row for interaction
 }
 
@@ -67,7 +68,7 @@ func (e *editor) save(filename string) error {
 	if err != nil {
 		return err
 	}
-	ioutil.WriteFile(org.directory+"/"+filename, buf, 0644)
+	ioutil.WriteFile(filename, buf, 0644)
 	return nil
 }
 
@@ -77,12 +78,12 @@ func (e *editor) saveFirst(s tcell.Screen) bool {
 	if response != "" {
 		if strings.ToUpper(response) == "Y" {
 			if currentFilename != "" {
-				e.save(currentFilename)
+				e.save(filepath.Join(org.currentDirectory, currentFilename))
 			} else {
 				f := prompt(s, "Filename: ")
 				if f != "" {
 					currentFilename = f
-					err := e.save(currentFilename)
+					err := e.save(filepath.Join(org.currentDirectory, currentFilename))
 					if err == nil {
 						e.dirty = false
 						setFileTitle(currentFilename)
@@ -128,19 +129,19 @@ func (e *editor) open(s tcell.Screen, filename string) error {
 	if proceed {
 		err := ed.load(filename)
 		if err == nil {
-			setFileTitle(filename)
+			currentFilename = filepath.Base(filename)
+			setFileTitle(currentFilename)
 		} else {
 			msg := fmt.Sprintf("Error opening file: %v", err)
 			prompt(s, msg)
 		}
-		currentFilename = filename
 	}
 	return nil
 }
 
 // load a .gv file and use it to populate the outline's buffer
 func (e *editor) load(filename string) error {
-	buf, err := ioutil.ReadFile(org.directory + "/" + filename)
+	buf, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
 	}
@@ -531,7 +532,7 @@ func (e *editor) handleEvents(s tcell.Screen) {
 					f := prompt(s, "Filename: ")
 					if f != "" {
 						currentFilename = f
-						err := e.save(currentFilename)
+						err := e.save(filepath.Join(org.currentDirectory, currentFilename))
 						if err == nil {
 							e.dirty = false
 							setFileTitle(currentFilename)
@@ -542,7 +543,7 @@ func (e *editor) handleEvents(s tcell.Screen) {
 					}
 				} else {
 					e.dirty = false
-					e.save(currentFilename)
+					e.save(filepath.Join(org.currentDirectory, currentFilename))
 				}
 				org.refresh(s)
 				drawScreen(s)

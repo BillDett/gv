@@ -170,7 +170,7 @@ func layoutHeadline(s tcell.Screen, e *editor, o *Outline, h *Headline, level in
 	} else {
 		bullet = solid_bullet
 	}
-	indent := organizerWidth + (level * 3)
+	indent := e.org.width + (level * 3)
 	hangingIndent := indent + 3
 	text := h.Buf.Runes()
 	pos := 0
@@ -333,7 +333,7 @@ func prompt(s tcell.Screen, msg string) string {
 	}
 }
 
-// Confirm that storage is set up; default to $HOME/.gv or use $GVHOME
+// Confirm that storage is set up; default to $HOME/.gv/outlines or use $GVHOME
 func setupStorage() (string, error) {
 	storageDirectory, found := os.LookupEnv("GVHOME")
 	if !found {
@@ -342,9 +342,9 @@ func setupStorage() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		storageDirectory += "/.gv"
+		storageDirectory = filepath.Join(storageDirectory, "/.gv")
 	}
-	storageDirectory += "/outlines"
+	storageDirectory = filepath.Join(storageDirectory, "/outlines")
 	err := os.MkdirAll(storageDirectory, 0700)
 	if err != nil {
 		return "", err
@@ -380,7 +380,8 @@ func main() {
 
 	dirStyle = tcell.StyleDefault.
 		Background(tcell.ColorBlack).
-		Foreground(tcell.ColorBlue)
+		Foreground(tcell.ColorBlue).
+		Underline(true)
 
 	selectedStyle = tcell.StyleDefault.
 		Background(tcell.ColorPowderBlue).

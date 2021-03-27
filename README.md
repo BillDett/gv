@@ -24,7 +24,8 @@ Organizer
 * Organizer entries should render outline titles, not filenames
 * Support DELETE To remove outlines and folders (with confirmation)
 
+
 Bugs
+* Quitting while Organizer in focus does not prompt to save the current outline
 * When saving/loading multiple times it seems like the editor gets out of sync & starts adding siblings as children.  Something is not being updated correctly.
-* Border status fields not updating since we're not redrawing it on every keystroke.
-* Resizing window smaller causes editor text to overrun right border
+* Resizing window vary small causes editor text to overrun right border some times...word wrap algorithm not exactly right

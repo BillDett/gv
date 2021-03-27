@@ -61,8 +61,6 @@ func newOrganizer(directory string, height int) *organizer {
 
 func (org *organizer) refresh(s tcell.Screen) {
 	org.entries = []*entry{}
-	org.entries = append(org.entries, newEntry("New Outline", "", false))
-	org.entries = append(org.entries, newEntry("New Folder", "", false))
 	contents, err := org.readDirectory()
 	if err != nil {
 		msg := fmt.Sprintf("Error reading storage; %v", err)
@@ -121,8 +119,8 @@ func (org *organizer) draw(s tcell.Screen) {
 			style := fileStyle
 			if org.inFocus && c == org.currentLine {
 				style = selectedStyle
-			} else if c < 2 {
-				style = buttonStyle
+				//} else if c < 2 {
+				//	style = buttonStyle
 			} else if org.entries[c].isDir {
 				style = dirStyle
 			}
@@ -141,39 +139,69 @@ func (org *organizer) draw(s tcell.Screen) {
 }
 
 // deal with whatever entry was selected
-//  "Open" an outline or folder.  Or create a new outline or folder
 // Return whether or not we should release Organizer focus
 func (org *organizer) entrySelected(s tcell.Screen) bool {
-	if org.currentLine == 0 { // new outline
-		ed.newOutline(s)
-	} else if org.currentLine == 1 { // new folder
-		f := prompt(s, "Enter new Folder name: ")
-		if f != "" {
-			err := os.Mkdir(filepath.Join(org.currentDirectory, f), 0700)
+	entry := org.entries[org.currentLine]
+	if entry.isDir {
+		org.currentDirectory = filepath.Join(org.currentDirectory, entry.filename)
+		org.clear(s)
+		org.refresh(s)
+		drawTopBorder(s)
+		return false
+	} else {
+		ed.open(s, filepath.Join(org.currentDirectory, entry.filename))
+		return true
+	}
+}
+
+func (org *organizer) newFolder(s tcell.Screen) {
+	f := prompt(s, "Enter new Folder name: ")
+	if f != "" {
+		err := os.Mkdir(filepath.Join(org.currentDirectory, f), 0700)
+		if err != nil {
+			msg := fmt.Sprintf("Error creating directory %s; %v", f, err)
+			prompt(s, msg)
+		}
+		org.clear(s)
+		org.refresh(s)
+	}
+}
+
+func (org *organizer) deleteSelected(s tcell.Screen) {
+	entry := org.entries[org.currentLine]
+	msg := fmt.Sprintf("Delete %s (Y/N)?", entry.name)
+	proceed := false
+	response := prompt(s, msg)
+	if response != "" {
+		if strings.ToUpper(response) == "Y" {
+			if entry.isDir {
+				msg := fmt.Sprintf("%s is a Folder- all contents will be removed! (Y/N)?", entry.name)
+				response := prompt(s, msg)
+				if response != "" {
+					if strings.ToUpper(response) == "Y" {
+						proceed = true
+					}
+				}
+			} else {
+				proceed = true
+			}
+		}
+		if proceed {
+			thefile := filepath.Join(org.currentDirectory, entry.filename)
+			err := os.RemoveAll(thefile)
 			if err != nil {
-				msg := fmt.Sprintf("Error creating directory %s; %v", f, err)
+				msg := fmt.Sprintf("Error removing %s; %v", thefile, err)
 				prompt(s, msg)
 			}
 			org.clear(s)
 			org.refresh(s)
 		}
-	} else { // open a file or folder
-		entry := org.entries[org.currentLine]
-		if entry.isDir {
-			org.currentDirectory = filepath.Join(org.currentDirectory, entry.filename)
-			org.clear(s)
-			org.refresh(s)
-			drawTopBorder(s)
-			return false
-		} else {
-			ed.open(s, entry.filename)
-		}
 	}
-	return true
 }
 
 func (org *organizer) dump() {
-	out := fmt.Sprintf("%v\ncurrentLine %d", org.entries, org.currentLine)
+	out := fmt.Sprintf("%v\ncurrentLine %d  currentDirectory %s   directory %s\n",
+		org.entries, org.currentLine, org.currentDirectory, org.directory)
 	ioutil.WriteFile("orgdump.txt", []byte(out), 0644)
 }
 
@@ -205,9 +233,19 @@ func (org *organizer) handleEvents(s tcell.Screen, o *Outline) {
 				done = org.entrySelected(s)
 				org.draw(s)
 			case tcell.KeyCtrlQ:
+				// TODO: SaveFirst?
 				s.Fini()
 				os.Exit(0)
+			case tcell.KeyCtrlO:
+				ed.newOutline(s)
+				done = true
 			case tcell.KeyCtrlF:
+				org.newFolder(s)
+				org.draw(s)
+			case tcell.KeyCtrlD:
+				org.deleteSelected(s)
+				org.draw(s)
+			case tcell.KeyCtrlP:
 				org.dump()
 			case tcell.KeyEscape:
 				done = true
