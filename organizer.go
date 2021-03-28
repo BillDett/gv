@@ -247,6 +247,10 @@ func (org *organizer) handleEvents(s tcell.Screen, o *Outline) {
 				org.draw(s)
 			case tcell.KeyCtrlP:
 				org.dump()
+			case tcell.KeyF1:
+				showHelp(s)
+				prompt(s, "")
+				drawScreen(s)
 			case tcell.KeyEscape:
 				done = true
 			}

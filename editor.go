@@ -273,6 +273,14 @@ func (e *editor) moveUp() {
 	}
 }
 
+func (e *editor) moveHome() {
+	e.currentPosition = 0
+}
+
+func (e *editor) moveEnd() {
+	e.currentPosition = e.out.headlineIndex[e.currentHeadlineID].Buf.lastpos - 1
+}
+
 // =============== Editing Methods ================================
 
 func (e *editor) insertRuneAtCurrentPosition(o *Outline, r rune) {
@@ -500,6 +508,12 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				e.draw(s)
 			case tcell.KeyLeft:
 				e.moveLeft()
+				e.draw(s)
+			case tcell.KeyHome:
+				e.moveHome()
+				e.draw(s)
+			case tcell.KeyEnd:
+				e.moveEnd()
 				e.draw(s)
 			case tcell.KeyBackspace, tcell.KeyBackspace2:
 				e.dirty = true

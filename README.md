@@ -11,7 +11,7 @@ GV
 Editor
 * Support Outline titles when saving (generate filename)
 * CTRL-T to modify outline title
-* More navigation (PgUp/PgDown, Home, End)
+* More navigation (PgUp/PgDown)
 * Selecting text (shift-navigate)
 * Copy/Cut/Paste Headlines
 * Collapse/Expand Headlines (use bullets to indicate status)
@@ -30,3 +30,4 @@ Bugs
 * Resizing window vary small causes editor text to overrun right border some times...word wrap algorithm not exactly right
 * Crash when GVHOME isn't writable when setting up storage for first time
 * Crash when trying to load a zero-byte or malformed .gv file
+* drawScreen should only showCursor if editor is handling events

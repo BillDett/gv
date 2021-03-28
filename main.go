@@ -321,7 +321,7 @@ func drawScreen(s tcell.Screen) {
 	ed.setScreenSize(s)
 	layoutOutline(s)
 	renderOutline(s)
-	s.ShowCursor(cursX, cursY)
+	s.ShowCursor(cursX, cursY) // TODO: This should only be done if editor is in focus
 	s.Show()
 }
 
