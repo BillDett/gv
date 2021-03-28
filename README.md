@@ -10,6 +10,7 @@ GV
 
 Editor
 * Support Outline titles when saving (generate filename)
+* CTRL-T to modify outline title
 * More navigation (PgUp/PgDown, Home, End)
 * Selecting text (shift-navigate)
 * Copy/Cut/Paste Headlines

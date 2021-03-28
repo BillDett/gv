@@ -108,13 +108,16 @@ func (e *editor) newOutline(s tcell.Screen) error {
 		proceed = e.saveFirst(s)
 	}
 	if proceed {
-		e.out = newOutline("")
-		e.out.init(e)
-		e.linePtr = 0
-		e.topLine = 0
-		e.dirty = false
-		currentFilename = ""
-		setFileTitle(currentFilename)
+		title := prompt(s, "Enter new outline title:")
+		if title != "" {
+			e.out = newOutline(title)
+			e.out.init(e)
+			e.linePtr = 0
+			e.topLine = 0
+			e.dirty = false
+			currentFilename = ""
+			setFileTitle(currentFilename)
+		}
 	}
 	return nil
 }
@@ -549,6 +552,10 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				drawScreen(s)
 			case tcell.KeyEscape:
 				org.handleEvents(s, e.out)
+				drawScreen(s)
+			case tcell.KeyF1:
+				showHelp(s)
+				prompt(s, "")
 				drawScreen(s)
 			case tcell.KeyCtrlQ:
 				if ed.dirty {

@@ -1,10 +1,12 @@
 package main
 
 import (
+	_ "embed"
 	"fmt"
 	_ "net/http/pprof"
 	"os"
 	"path/filepath"
+	"strings"
 	"unicode"
 
 	"github.com/gdamore/tcell/v2"
@@ -52,6 +54,56 @@ var org *organizer
 var ed *editor
 
 var storageDirectory string
+
+//go:embed help.txt
+var helptext string
+
+func drawFrame(s tcell.Screen, x, y, width, height int) {
+	// Corners
+	s.SetContent(x, y, tlcorner, nil, defStyle)
+	s.SetContent(x+width-1, y, trcorner, nil, defStyle)
+	s.SetContent(x, y+height-1, llcorner, nil, defStyle)
+	s.SetContent(x+width-1, y+height-1, lrcorner, nil, defStyle)
+	// Horizontal
+	for bx := 0; bx < width-2; bx++ {
+		s.SetContent(bx+x+1, y, hline, nil, defStyle)
+		s.SetContent(bx+x+1, y+height-1, hline, nil, defStyle)
+	}
+	writeString(s, x+2, y, "[Help]")
+	// Vertical
+	for by := y + 1; by < y+height-1; by++ {
+		s.SetContent(x, by, vline, nil, defStyle)
+		for bx := 1; bx < width-2; bx++ {
+			s.SetContent(x+bx, by, ' ', nil, defStyle)
+		}
+		s.SetContent(x+width-1, by, vline, nil, defStyle)
+	}
+}
+
+func writeString(s tcell.Screen, x int, y int, text string) {
+	for c, r := range []rune(text) {
+		s.SetContent(x+c, y, r, nil, defStyle)
+	}
+}
+
+func showHelp(s tcell.Screen) {
+	lines := strings.Split(helptext, "\n")
+	width := 0
+	for _, l := range lines {
+		if len(l) > width {
+			width = len(l)
+		}
+	}
+	width += 4
+	height := len(lines) + 2
+	x := (screenWidth - width) / 2
+	y := (screenHeight - height) / 2
+	drawFrame(s, x, y, width, height)
+	for c, l := range lines {
+		writeString(s, x+2, y+c+1, l)
+	}
+
+}
 
 func drawBorder(s tcell.Screen, x, y, width, height int) {
 	// Corners

@@ -1,0 +1,14 @@
+
+Use ESC to toggle between Organizer and Editor
+
+Common Commands
+    F1 - Help Screen
+    CTRL-Q - Quit
+
+Organizer Commands
+    CTRL-O - New Outline          CTRL-F - New Folder
+    CTRL-D - Delete selected
+
+Editor Commands
+    CTRL-D - Delete Headline      CTRl-S - Save Outline
+    
