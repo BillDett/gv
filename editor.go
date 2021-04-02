@@ -31,7 +31,7 @@ type editor struct {
 	currentPosition   int        // the current position within the currentHeadline.Buf
 	topLine           int        // index of the topmost "line" of the window in lineIndex
 	dirty             bool       // Is the outliine buffer modified since last save?
-
+	sel               *selection // pointer to the current selection (nil means we are not selecting any text)
 }
 
 // a line is a logical representation of a line that is rendered in the window
@@ -42,6 +42,23 @@ type line struct {
 	hangingIndent int  // Indent for text without a bullet
 	position      int  // Text position in o.lineIndex[headlineID].Buf.Runes()
 	length        int  // How many runes in this "line"
+}
+
+// A selection indicates the start and end positions of contiguous outline text that is selected
+// We need to track the selection information in two places:
+//   * where the range exists across the entire outline model - so we can carry out edits on the selection
+//   * where the range exists in the lineIndex - so we can render those characters differently from the rest
+// TODO: NEED TO THINK ABOUT THIS MORE...PROBLEM IS DEFINING A CONTIGUOUS RANGE OVER NON-CONTIGUOUS HEADLINES...
+type selection struct {
+	startPosition   int // outline buf position where selection starts
+	startHeadlineID int // ID of headline where selection starts
+	//startLine       int // element of lineIndex where start position resides
+	//startLineOffset int // offset from line.position where start begins
+	endPosition   int // outline buf position where selection occurs
+	endHeadlineID int // ID of headline where selection ends
+	//endLine         int // element of lineIndex where end position resides
+	//endLineOffset   int // offset from line.position where end occurs
+
 }
 
 var currentLine int // which "line" we are currently on
@@ -57,10 +74,12 @@ func (e *editor) setScreenSize(s tcell.Screen) {
 
 func newEditor(org *organizer) *editor {
 	o := newOutline("")
-	ed := &editor{org, o, nil, 0, 0, 0, 0, 0, 0, false}
+	ed := &editor{org, o, nil, 0, 0, 0, 0, 0, 0, false, nil}
 	o.init(ed)
 	return ed
 }
+
+func (e *editor) isSelecting() bool { return e.sel != nil }
 
 // save the outline buffer to a file
 func (e *editor) save(filename string) error {
@@ -114,7 +133,7 @@ func (e *editor) newOutline(s tcell.Screen) error {
 			e.out.init(e)
 			e.linePtr = 0
 			e.topLine = 0
-			e.dirty = false
+			e.dirty = true
 			currentFilename = ""
 			setFileTitle(currentFilename)
 		}
@@ -174,7 +193,8 @@ func (e *editor) recordLogicalLine(id int, bullet rune, indent int, hangingInden
 	e.lineIndex = append(e.lineIndex, &line{id, bullet, indent, hangingIndent, position, length})
 }
 
-func (e *editor) moveRight() {
+func (e *editor) moveRight(shiftPressed bool) {
+	origPosition := e.currentPosition
 	previousHeadlineID := e.currentHeadlineID
 	if e.currentPosition < e.out.headlineIndex[e.currentHeadlineID].Buf.lastpos-1 { // are we within the text of current Headline?
 		e.currentPosition++
@@ -185,6 +205,15 @@ func (e *editor) moveRight() {
 			e.currentPosition = 0
 		} else { // no more Headlines
 			return
+		}
+	}
+	// Make necessary updates to selection if necessary
+	if shiftPressed {
+		if !e.isSelecting() {
+			e.sel = &selection{origPosition, previousHeadlineID, e.currentPosition, e.currentHeadlineID}
+		} else {
+			e.sel.endHeadlineID = e.currentHeadlineID
+			e.sel.endPosition = e.currentPosition
 		}
 	}
 	// Do we need to scroll?
@@ -286,7 +315,7 @@ func (e *editor) moveEnd() {
 func (e *editor) insertRuneAtCurrentPosition(o *Outline, r rune) {
 	h := o.currentHeadline(e)
 	h.Buf.InsertRunes(e.currentPosition, []rune{r})
-	e.moveRight()
+	e.moveRight(false)
 }
 
 // Remove the previous character.  Join this Headline to the previous Headline if on first character
@@ -446,6 +475,14 @@ func (e *editor) deleteHeadline(o *Outline) {
 	}
 }
 
+// Edit the current outline's Title
+func (e *editor) editOutlineTitle(s tcell.Screen, o *Outline) {
+	newTitle := prompt(s, "Enter new title: ")
+	if newTitle != "" {
+		o.Title = newTitle
+	}
+}
+
 // Collapse the current headline and all children
 //  (this just marks each headline as invisible)
 func (e *editor) collapse() {
@@ -504,7 +541,7 @@ func (e *editor) handleEvents(s tcell.Screen) {
 					e.draw(s)
 				}
 			case tcell.KeyRight:
-				e.moveRight()
+				e.moveRight(mod == tcell.ModShift)
 				e.draw(s)
 			case tcell.KeyLeft:
 				e.moveLeft()
@@ -519,24 +556,30 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				e.dirty = true
 				e.backspace(e.out)
 				e.draw(s)
+				drawTopBorder(s)
 			case tcell.KeyDelete:
 				e.dirty = true
 				e.delete(e.out)
 				e.draw(s)
+				drawTopBorder(s)
 			case tcell.KeyEnter:
 				e.dirty = true
 				e.enterPressed(e.out)
 				e.draw(s)
+				drawTopBorder(s)
 			case tcell.KeyTab:
 				e.tabPressed(e.out)
 				e.draw(s)
 			case tcell.KeyBacktab:
+				e.dirty = true
 				e.backTabPressed(e.out)
 				e.draw(s)
+				drawTopBorder(s)
 			case tcell.KeyRune:
 				e.dirty = true
 				e.insertRuneAtCurrentPosition(e.out, ev.Rune())
 				e.draw(s)
+				drawTopBorder(s)
 			case tcell.KeyCtrlD:
 				e.deleteHeadline(e.out)
 				e.draw(s)
@@ -564,6 +607,11 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				}
 				org.refresh(s)
 				drawScreen(s)
+			case tcell.KeyCtrlT:
+				e.editOutlineTitle(s, e.out)
+				e.dirty = true
+				drawTopBorder(s)
+				e.draw(s)
 			case tcell.KeyEscape:
 				org.handleEvents(s, e.out)
 				drawScreen(s)
@@ -572,31 +620,15 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				prompt(s, "")
 				drawScreen(s)
 			case tcell.KeyCtrlQ:
-				if ed.dirty {
-					save := prompt(s, "Outline modified, save [Y|N]? ")
-					if save == "" {
-						clearPrompt(s)
-						drawScreen(s)
-						break
-					}
-					if strings.ToUpper(save) != "N" {
-						if currentFilename == "" {
-							f := prompt(s, "Filename: ")
-							if f != "" {
-								e.save(f)
-							} else { // skipped setting filename, cancel quit request
-								clearPrompt(s)
-								drawScreen(s)
-								break
-							}
-						} else {
-							e.save(currentFilename)
-							drawScreen(s)
-						}
-					}
+				proceed := true
+				if e.dirty {
+					// Prompt to save current outline first
+					proceed = e.saveFirst(s)
 				}
-				s.Fini()
-				os.Exit(0)
+				if proceed {
+					s.Fini()
+					os.Exit(0)
+				}
 			}
 		}
 	}

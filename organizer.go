@@ -233,9 +233,15 @@ func (org *organizer) handleEvents(s tcell.Screen, o *Outline) {
 				done = org.entrySelected(s)
 				org.draw(s)
 			case tcell.KeyCtrlQ:
-				// TODO: SaveFirst?
-				s.Fini()
-				os.Exit(0)
+				proceed := true
+				if ed.dirty {
+					// Prompt to save current outline first
+					proceed = ed.saveFirst(s)
+				}
+				if proceed {
+					s.Fini()
+					os.Exit(0)
+				}
 			case tcell.KeyCtrlO:
 				ed.newOutline(s)
 				done = true

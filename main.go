@@ -73,7 +73,7 @@ func drawFrame(s tcell.Screen, x, y, width, height int) {
 	// Vertical
 	for by := y + 1; by < y+height-1; by++ {
 		s.SetContent(x, by, vline, nil, defStyle)
-		for bx := 1; bx < width-2; bx++ {
+		for bx := 1; bx < width-1; bx++ {
 			s.SetContent(x+bx, by, ' ', nil, defStyle)
 		}
 		s.SetContent(x+width-1, by, vline, nil, defStyle)
@@ -142,6 +142,7 @@ func drawTopBorder(s tcell.Screen) {
 
 func renderTopBorder() *[]rune {
 	var row []rune
+	maxTitleWidth := int(float64(ed.editorWidth) * 0.8) // Set maximum title size so we don't run over
 
 	// Organizer
 	foldername := []rune(filepath.Base(org.currentDirectory)) // TODO: Ensure this is < org.width-3
@@ -160,9 +161,16 @@ func renderTopBorder() *[]rune {
 
 	// Editor
 	titleRunes := []rune(ed.out.Title)
+	if len(titleRunes) > maxTitleWidth { // Is title too long?  Do we need to truncate & add ellipsis?
+		titleRunes = titleRunes[:maxTitleWidth-1]
+		titleRunes = append(titleRunes, ellipsis)
+	}
 	row = append(row, hline)
 	row = append(row, '[')
 	row = append(row, titleRunes...)
+	if ed.dirty {
+		row = append(row, '*')
+	}
 	row = append(row, ']')
 	for p := len(row); p < screenWidth-2; p++ {
 		row = append(row, hline)
@@ -177,16 +185,6 @@ func renderBottomBorder(width int) *[]rune {
 		row = append(row, hline)
 	}
 	row = append(row, tup)
-	row = append(row, hline)
-	row = append(row, '[')
-	row = append(row, []rune(currentFilename)...)
-	row = append(row, ']')
-	row = append(row, hline)
-	if ed.dirty {
-		row = append(row, dirtyFlag)
-	} else {
-		row = append(row, hline)
-	}
 	for p := len(row); p < screenWidth-2; p++ {
 		row = append(row, hline)
 	}
@@ -285,7 +283,8 @@ func renderOutline(s tcell.Screen) {
 				cursY = y
 				ed.linePtr = l
 			}
-			s.SetContent(x+line.hangingIndent, y, runes[p], nil, defStyle)
+			theStyle := defStyle
+			s.SetContent(x+line.hangingIndent, y, runes[p], nil, theStyle)
 			x++
 		}
 		y++
@@ -445,6 +444,7 @@ func main() {
 
 	directory, err := setupStorage()
 	if err != nil {
+		s.Fini()
 		fmt.Printf("Unable to set up storage: %v\n", err)
 		os.Exit(1)
 	}
