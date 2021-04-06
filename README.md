@@ -21,7 +21,6 @@ Organizer
 
 Bugs
 * When saving/loading multiple times it seems like the editor gets out of sync & starts adding siblings as children.  Something is not being updated correctly.
-* Resizing window vary small causes editor text to overrun right border some times...word wrap algorithm not exactly right
 * Resizing window really small causes an exception (top and bottom borders not same size anymore)
 * Crash when trying to load a zero-byte or malformed .gv file
 * drawScreen should only showCursor if editor is handling events

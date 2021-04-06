@@ -227,7 +227,8 @@ func layoutHeadline(s tcell.Screen, e *editor, o *Outline, h *Headline, level in
 	end := len(*text)
 	firstLine := true
 	for pos < end {
-		endPos := pos + e.editorWidth
+		//endPos := pos + e.editorWidth
+		endPos := pos + e.editorWidth - (level * 3) - 1
 		if endPos > end { // overshot end of text, we're on the first or last fragment
 			var mybullet rune
 			if firstLine { // if we're laying out first line less than editor width, remember that we want to use a bullet

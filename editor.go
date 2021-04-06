@@ -68,7 +68,8 @@ var cursY int       // Y coordinate of the cursor
 func (e *editor) setScreenSize(s tcell.Screen) {
 	var width int
 	width, height := s.Size()
-	e.editorWidth = int(float64(width-e.org.width-3) * 0.9)
+	//e.editorWidth = int(float64(width-e.org.width-3) * 0.9)
+	e.editorWidth = width - e.org.width - 3
 	e.editorHeight = height - 3 // 2 rows for border, 1 row for interaction
 }
 
