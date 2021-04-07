@@ -287,8 +287,8 @@ func (e *editor) moveLeft(shiftPressed bool) {
 
 func (e *editor) moveDown() bool {
 	if e.linePtr != len(e.lineIndex)-1 { // Make sure we're not on last line
+		e.sel = nil
 		offset := e.currentPosition - e.lineIndex[e.linePtr].position // how far 'in' are we on the logical line?
-		dbg = offset
 		newLinePtr := e.linePtr + 1
 		if newLinePtr < len(e.lineIndex) { // There are more lines below us
 			if offset >= e.lineIndex[newLinePtr].length { // Are we moving down to a smaller line with x too far right?
@@ -307,10 +307,39 @@ func (e *editor) moveDown() bool {
 	return false
 }
 
+func (e *editor) selectDown() bool {
+	if e.linePtr != len(e.lineIndex)-1 { // Make sure we're not on last line
+		offset := e.currentPosition - e.lineIndex[e.linePtr].position // how far 'in' are we on the logical line?
+		newLinePtr := e.linePtr + 1
+		if !e.isSelecting() {
+			e.sel = &selection{e.currentHeadlineID, e.currentPosition, 0}
+		}
+		if newLinePtr < len(e.lineIndex) { // There are more lines below us
+			if e.sel.headlineID == e.lineIndex[newLinePtr].headlineID { // Make sure we're not moving to a new Headline
+				if offset >= e.lineIndex[newLinePtr].length { // Are we moving down to a smaller line with x too far right?
+					e.currentPosition = e.lineIndex[newLinePtr].position + e.lineIndex[newLinePtr].length - 1
+				} else {
+					e.currentPosition = offset + e.lineIndex[newLinePtr].position
+				}
+			} else { // moving down would put us on a new Headline, do nothing
+				return false
+			}
+			e.sel.endPosition = e.currentPosition
+		}
+		// Scroll?
+		if e.linePtr-e.topLine+1 >= e.editorHeight {
+			e.topLine++
+			return true
+		}
+	}
+	return false
+}
+
 func (e *editor) moveUp() {
 	if e.linePtr != 0 { // Do nothing if on first logical line
 		offset := e.currentPosition - e.lineIndex[e.linePtr].position // how far 'in' are we on the logical line?
 		newLinePtr := e.linePtr - 1
+		e.sel = nil
 		if newLinePtr >= 0 { // There are more lines above
 			if offset >= e.lineIndex[newLinePtr].length { // Are we moving up to a smaller line with x too far right?
 				e.currentPosition = e.lineIndex[newLinePtr].position + e.lineIndex[newLinePtr].length - 1
@@ -326,12 +355,58 @@ func (e *editor) moveUp() {
 	}
 }
 
-func (e *editor) moveHome() {
-	e.currentPosition = 0
+func (e *editor) selectUp() {
+	if e.linePtr != 0 { // Do nothing if on first logical line
+		offset := e.currentPosition - e.lineIndex[e.linePtr].position // how far 'in' are we on the logical line?
+		newLinePtr := e.linePtr - 1
+		if !e.isSelecting() {
+			e.sel = &selection{e.currentHeadlineID, 0, e.currentPosition}
+		}
+		if newLinePtr >= 0 { // There are more lines above
+			if e.sel.headlineID == e.lineIndex[newLinePtr].headlineID { // Make sure we're not moving to a new Headline
+				if offset >= e.lineIndex[newLinePtr].length { // Are we moving up to a smaller line with x too far right?
+					e.currentPosition = e.lineIndex[newLinePtr].position + e.lineIndex[newLinePtr].length - 1
+				} else {
+					e.currentPosition = offset + e.lineIndex[newLinePtr].position
+				}
+			} else { // moving down would put us on a new Headline, do nothing
+				return
+			}
+			e.sel.startPosition = e.currentPosition
+		}
+		// Scroll?
+		if e.linePtr != 0 && e.linePtr-e.topLine+1 == 1 {
+			e.topLine--
+		}
+	}
 }
 
-func (e *editor) moveEnd() {
+func (e *editor) moveHome(shiftPressed bool) {
+	origPosition := e.currentPosition
+	e.currentPosition = 0
+	if shiftPressed {
+		if !e.isSelecting() {
+			e.sel = &selection{e.currentHeadlineID, 0, origPosition}
+		} else {
+			e.sel.startPosition = 0
+		}
+	} else {
+		e.sel = nil
+	}
+}
+
+func (e *editor) moveEnd(shiftPressed bool) {
+	origPosition := e.currentPosition
 	e.currentPosition = e.out.headlineIndex[e.currentHeadlineID].Buf.lastpos - 1
+	if shiftPressed {
+		if !e.isSelecting() {
+			e.sel = &selection{e.currentHeadlineID, origPosition, e.currentPosition}
+		} else {
+			e.sel.endPosition = e.currentPosition
+		}
+	} else {
+		e.sel = nil
+	}
 }
 
 // =============== Editing Methods ================================
@@ -547,23 +622,25 @@ func (e *editor) handleEvents(s tcell.Screen) {
 			drawScreen(s)
 		case *tcell.EventKey:
 			mod := ev.Modifiers()
-			//fmt.Printf("EventKey Modifiers: %d Key: %d Rune: %v", mod, key, ch)
 			switch ev.Key() {
 			case tcell.KeyDown:
 				if mod == tcell.ModCtrl {
 					e.expand()
+				} else if mod == tcell.ModShift {
+					e.selectDown()
 				} else {
 					e.moveDown()
-					e.draw(s)
 				}
-				//drawScreen(s)
+				e.draw(s)
 			case tcell.KeyUp:
 				if mod == tcell.ModCtrl {
 					e.collapse()
+				} else if mod == tcell.ModShift {
+					e.selectUp()
 				} else {
 					e.moveUp()
-					e.draw(s)
 				}
+				e.draw(s)
 			case tcell.KeyRight:
 				e.moveRight(mod == tcell.ModShift)
 				e.draw(s)
@@ -571,10 +648,10 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				e.moveLeft(mod == tcell.ModShift)
 				e.draw(s)
 			case tcell.KeyHome:
-				e.moveHome()
+				e.moveHome(mod == tcell.ModShift)
 				e.draw(s)
 			case tcell.KeyEnd:
-				e.moveEnd()
+				e.moveEnd(mod == tcell.ModShift)
 				e.draw(s)
 			case tcell.KeyBackspace, tcell.KeyBackspace2:
 				e.dirty = true
@@ -637,6 +714,10 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				drawTopBorder(s)
 				e.draw(s)
 			case tcell.KeyEscape:
+				if e.isSelecting() { // Clear any selection
+					e.sel = nil
+					e.draw(s)
+				}
 				org.handleEvents(s, e.out)
 				drawScreen(s)
 			case tcell.KeyF1:
