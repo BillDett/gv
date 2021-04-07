@@ -44,21 +44,12 @@ type line struct {
 	length        int  // How many runes in this "line"
 }
 
-// A selection indicates the start and end positions of contiguous outline text that is selected
-// We need to track the selection information in two places:
-//   * where the range exists across the entire outline model - so we can carry out edits on the selection
-//   * where the range exists in the lineIndex - so we can render those characters differently from the rest
-// TODO: NEED TO THINK ABOUT THIS MORE...PROBLEM IS DEFINING A CONTIGUOUS RANGE OVER NON-CONTIGUOUS HEADLINES...
+// A selection indicates the start and end positions of contiguous Headline text that is selected
+// We do not support selecting text *across* Headlines as that is really difficult to do right
 type selection struct {
-	startPosition   int // outline buf position where selection starts
-	startHeadlineID int // ID of headline where selection starts
-	//startLine       int // element of lineIndex where start position resides
-	//startLineOffset int // offset from line.position where start begins
+	headlineID    int // ID of headline where selection occurs
+	startPosition int // outline buf position where selection starts
 	endPosition   int // outline buf position where selection occurs
-	endHeadlineID int // ID of headline where selection ends
-	//endLine         int // element of lineIndex where end position resides
-	//endLineOffset   int // offset from line.position where end occurs
-
 }
 
 var currentLine int // which "line" we are currently on
@@ -136,6 +127,7 @@ func (e *editor) newOutline(s tcell.Screen) error {
 			e.topLine = 0
 			e.dirty = true
 			currentFilename = ""
+			e.sel = nil
 			setFileTitle(currentFilename)
 		}
 	}
@@ -185,6 +177,7 @@ func (e *editor) load(filename string) error {
 	e.currentHeadlineID = e.out.Headlines[0].ID
 	e.currentPosition = 0
 	e.dirty = false
+	e.sel = nil
 	return nil
 }
 
@@ -199,23 +192,33 @@ func (e *editor) moveRight(shiftPressed bool) {
 	previousHeadlineID := e.currentHeadlineID
 	if e.currentPosition < e.out.headlineIndex[e.currentHeadlineID].Buf.lastpos-1 { // are we within the text of current Headline?
 		e.currentPosition++
-	} else { // move to the first character of next Headline (if one exists)
-		h := e.out.nextHeadline(e.currentHeadlineID, e)
-		if h != nil {
-			e.currentHeadlineID = h.ID
-			e.currentPosition = 0
-		} else { // no more Headlines
+	} else { // move to the first character of next Headline (if one exists and we are not selecting)
+		if !shiftPressed {
+			h := e.out.nextHeadline(e.currentHeadlineID, e)
+			if h != nil {
+				e.currentHeadlineID = h.ID
+				e.currentPosition = 0
+			} else { // no more Headlines
+				return
+			}
+		} else { // selecting, but at end of Headline
 			return
 		}
 	}
 	// Make necessary updates to selection if necessary
 	if shiftPressed {
 		if !e.isSelecting() {
-			e.sel = &selection{origPosition, previousHeadlineID, e.currentPosition, e.currentHeadlineID}
+			e.sel = &selection{e.currentHeadlineID, origPosition, e.currentPosition}
 		} else {
-			e.sel.endHeadlineID = e.currentHeadlineID
-			e.sel.endPosition = e.currentPosition
+			// See if we are before or after the selection and update the beginning or end accordingly
+			if e.currentPosition > e.sel.endPosition {
+				e.sel.endPosition = e.currentPosition
+			} else {
+				e.sel.startPosition = e.currentPosition
+			}
 		}
+	} else { // Cancel any existing selection
+		e.sel = nil
 	}
 	// Do we need to scroll?
 	newPtr := e.linePtr + 1
@@ -232,19 +235,39 @@ func (e *editor) moveRight(shiftPressed bool) {
 	}
 }
 
-func (e *editor) moveLeft() {
+func (e *editor) moveLeft(shiftPressed bool) {
 	if e.currentPosition == 0 && e.linePtr == 0 { // Do nothing if on first character of first headline
 		return
 	} else {
+		origPosition := e.currentPosition
 		previousHeadlineID := e.currentHeadlineID
 		if e.currentPosition > 0 { // Just move to previous character in this headline
 			e.currentPosition--
 		} else { // at first character of current headline, move to end of previous headline
-			p := e.out.previousHeadline(e.currentHeadlineID, e)
-			if p != nil {
-				e.currentHeadlineID = p.ID
-				e.currentPosition = p.Buf.lastpos - 1
+			if !shiftPressed {
+				p := e.out.previousHeadline(e.currentHeadlineID, e)
+				if p != nil {
+					e.currentHeadlineID = p.ID
+					e.currentPosition = p.Buf.lastpos - 1
+				}
+			} else { // We are selecting, so do nothing
+				return
 			}
+		}
+		// Make necessary updates to selection if necessary
+		if shiftPressed {
+			if !e.isSelecting() {
+				e.sel = &selection{e.currentHeadlineID, e.currentPosition, origPosition}
+			} else {
+				// Update the beginning or end of the selection depending on where cursor is relatively
+				if e.currentPosition < e.sel.startPosition {
+					e.sel.startPosition = e.currentPosition
+				} else {
+					e.sel.endPosition = e.currentPosition
+				}
+			}
+		} else { // Cancel any existing selection
+			e.sel = nil
 		}
 		// Do we need to scroll?
 		newPtr := e.linePtr - 1
@@ -328,7 +351,7 @@ func (e *editor) backspace(o *Outline) {
 		if e.currentPosition > 0 { // Remove previous character
 			posToRemove := e.currentPosition - 1
 			currentHeadline.Buf.Delete(posToRemove, 1)
-			e.moveLeft()
+			e.moveLeft(false)
 		} else { // Join this headline with previous one
 			previousHeadline := o.previousHeadline(currentHeadline.ID, e)
 			if previousHeadline != nil {
@@ -545,7 +568,7 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				e.moveRight(mod == tcell.ModShift)
 				e.draw(s)
 			case tcell.KeyLeft:
-				e.moveLeft()
+				e.moveLeft(mod == tcell.ModShift)
 				e.draw(s)
 			case tcell.KeyHome:
 				e.moveHome()

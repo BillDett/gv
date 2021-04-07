@@ -9,7 +9,8 @@ GV
 Editor
 * Support Outline titles when saving (generate filename, no need to prompt when doing CTRL-S)
 * More navigation (PgUp/PgDown)
-* Selecting text (shift-navigate)  [This is going to be hard]
+* Selecting text (shift-navigate)  [LEFT/RIGHT WORKING, FINISH UP AND DOWN]
+* Copy/Cut/Paste selected text
 * Copy/Cut/Paste Headlines [should be entire Headline, not portion thereof]
 * Collapse/Expand Headlines (use bullets to indicate status)
 * Background saves (set up a semaphore so that edits don't conflict with an in-progress save happening via goroutine)
