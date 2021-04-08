@@ -74,6 +74,9 @@ func (o *Outline) dump(e *editor) {
 	out += fmt.Sprintf("\nscreen width %d, org width %d, editor width %d\n", screenWidth, e.org.width, e.editorWidth)
 	out += fmt.Sprintf("\nlinePtr %d, currentHeadline %d, currentPosition %d, current Rune (%#U) num Headlines %d, dbg %d, dbg2 %d\n",
 		e.linePtr, e.currentHeadlineID, e.currentPosition, text[e.currentPosition], len(o.headlineIndex), dbg, dbg2)
+	if e.selectionClipboard != nil {
+		out += fmt.Sprintf("\nSelection Clipboard >%s<\n", string(*e.selectionClipboard))
+	}
 	ioutil.WriteFile("dump.txt", []byte(out), 0644)
 }
 

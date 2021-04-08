@@ -21,17 +21,19 @@ the editor's window.
 */
 
 type editor struct {
-	org               *organizer // pointer to the organizer
-	out               *Outline   // current outline being edited
-	lineIndex         []*line    // Text Position index for each "line" after editor has been laid out.
-	linePtr           int        // index of the line currently beneath the cursor
-	editorWidth       int        // width of an editor column
-	editorHeight      int        // height of the editor window
-	currentHeadlineID int        // ID of headline cursor is on
-	currentPosition   int        // the current position within the currentHeadline.Buf
-	topLine           int        // index of the topmost "line" of the window in lineIndex
-	dirty             bool       // Is the outliine buffer modified since last save?
-	sel               *selection // pointer to the current selection (nil means we are not selecting any text)
+	org                *organizer // pointer to the organizer
+	out                *Outline   // current outline being edited
+	lineIndex          []*line    // Text Position index for each "line" after editor has been laid out.
+	linePtr            int        // index of the line currently beneath the cursor
+	editorWidth        int        // width of an editor column
+	editorHeight       int        // height of the editor window
+	currentHeadlineID  int        // ID of headline cursor is on
+	currentPosition    int        // the current position within the currentHeadline.Buf
+	topLine            int        // index of the topmost "line" of the window in lineIndex
+	dirty              bool       // Is the outliine buffer modified since last save?
+	sel                *selection // pointer to the current selection (nil means we are not selecting any text)
+	headlineClipboard  *Headline  // pointer to the currently copied/cut Headline (nil if nothing being copied/cut)
+	selectionClipboard *[]rune    // pointer to a slice of runes containing copied/cut selecton text (nil if nothing copied/cut)
 }
 
 // a line is a logical representation of a line that is rendered in the window
@@ -66,7 +68,7 @@ func (e *editor) setScreenSize(s tcell.Screen) {
 
 func newEditor(org *organizer) *editor {
 	o := newOutline("")
-	ed := &editor{org, o, nil, 0, 0, 0, 0, 0, 0, false, nil}
+	ed := &editor{org, o, nil, 0, 0, 0, 0, 0, 0, false, nil, nil, nil}
 	o.init(ed)
 	return ed
 }
@@ -400,9 +402,9 @@ func (e *editor) moveEnd(shiftPressed bool) {
 	e.currentPosition = e.out.headlineIndex[e.currentHeadlineID].Buf.lastpos - 1
 	if shiftPressed {
 		if !e.isSelecting() {
-			e.sel = &selection{e.currentHeadlineID, origPosition, e.currentPosition}
+			e.sel = &selection{e.currentHeadlineID, origPosition, e.currentPosition - 1} // omit nodeDelim at end of Headline
 		} else {
-			e.sel.endPosition = e.currentPosition
+			e.sel.endPosition = e.currentPosition - 1
 		}
 	} else {
 		e.sel = nil
@@ -574,6 +576,54 @@ func (e *editor) deleteHeadline(o *Outline) {
 	}
 }
 
+// copy the current Headline to the clipboard
+func (e *editor) copyHeadline() {
+
+}
+
+// cut the current Headline and put in the clipboard
+func (e *editor) cutHeadline() {
+
+}
+
+// copy the text of selection to the clipboard
+func (e *editor) copySelection() {
+	if e.isSelecting() {
+		buf := []rune{}
+		text := *(e.out.headlineIndex[e.currentHeadlineID].Buf.Runes())
+		for c := e.sel.startPosition; c <= e.sel.endPosition; c++ {
+			buf = append(buf, text[c])
+		}
+		e.selectionClipboard = &buf
+	}
+}
+
+// cut the current selection from current position and put in clipboard
+func (e *editor) cutSelection() {
+	if e.isSelecting() {
+		e.copySelection()
+		// Remove the runes within the selection from current Headline
+		// BUG: Sometimes this cuts the whole rest of the Headline...?  Also not setting e.currentPosition correctly
+		span := e.sel.endPosition - e.sel.startPosition
+		pieceTable := e.out.headlineIndex[e.currentHeadlineID].Buf
+		pieceTable.Delete(e.sel.startPosition, span)
+		if e.currentPosition == e.sel.endPosition {
+			e.currentPosition -= span
+		}
+		e.sel = nil
+	}
+}
+
+// paste the Headline in the clipboard as a child of current Headline
+func (e *editor) pasteHeadline() {
+
+}
+
+// paste the selection in the clipboard at current cursor position in current Headline
+func (e *editor) pasteSelection() {
+
+}
+
 // Edit the current outline's Title
 func (e *editor) editOutlineTitle(s tcell.Screen, o *Outline) {
 	newTitle := prompt(s, "Enter new title: ")
@@ -681,13 +731,35 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				e.insertRuneAtCurrentPosition(e.out, ev.Rune())
 				e.draw(s)
 				drawTopBorder(s)
+			case tcell.KeyCtrlC:
+				if e.isSelecting() {
+					e.copySelection()
+				} else {
+					e.copyHeadline()
+				}
 			case tcell.KeyCtrlD:
 				e.deleteHeadline(e.out)
 				e.draw(s)
-			case tcell.KeyCtrlB: // Experimental!
-				e.clear(s)
 			case tcell.KeyCtrlF: // for debugging
 				e.out.dump(e)
+			case tcell.KeyCtrlV:
+				if e.isSelecting() {
+					e.pasteSelection()
+				} else {
+					e.pasteHeadline()
+				}
+				e.dirty = true
+				e.draw(s)
+				drawTopBorder(s)
+			case tcell.KeyCtrlX:
+				if e.isSelecting() {
+					e.cutSelection()
+				} else {
+					e.cutHeadline()
+				}
+				e.dirty = true
+				e.draw(s)
+				drawTopBorder(s)
 			case tcell.KeyCtrlS:
 				if currentFilename == "" {
 					f := prompt(s, "Filename: ")

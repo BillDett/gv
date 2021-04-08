@@ -24,3 +24,5 @@ Bugs
 * Resizing window really small causes an exception (top and bottom borders not same size anymore)
 * Crash when trying to load a zero-byte or malformed .gv file
 * drawScreen should only showCursor if editor is handling events
+* Kind of weird behavior when selecting up then down right afterwards..is that what users would expect?
+* When Selecting with End key, shouldn't include nodeDelim at end of Headline
