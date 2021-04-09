@@ -413,6 +413,11 @@ func (e *editor) moveEnd(shiftPressed bool) {
 
 // =============== Editing Methods ================================
 
+func (e *editor) setDirty(s tcell.Screen, dirty bool) {
+	e.dirty = dirty
+	drawTopBorder(s)
+}
+
 func (e *editor) insertRuneAtCurrentPosition(o *Outline, r rune) {
 	h := o.currentHeadline(e)
 	h.Buf.InsertRunes(e.currentPosition, []rune{r})
@@ -704,33 +709,29 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				e.moveEnd(mod == tcell.ModShift)
 				e.draw(s)
 			case tcell.KeyBackspace, tcell.KeyBackspace2:
-				e.dirty = true
 				e.backspace(e.out)
 				e.draw(s)
-				drawTopBorder(s)
+				e.setDirty(s, true)
 			case tcell.KeyDelete:
-				e.dirty = true
 				e.delete(e.out)
 				e.draw(s)
-				drawTopBorder(s)
+				e.setDirty(s, true)
 			case tcell.KeyEnter:
-				e.dirty = true
 				e.enterPressed(e.out)
 				e.draw(s)
-				drawTopBorder(s)
+				e.setDirty(s, true)
 			case tcell.KeyTab:
 				e.tabPressed(e.out)
 				e.draw(s)
+				e.setDirty(s, true)
 			case tcell.KeyBacktab:
-				e.dirty = true
 				e.backTabPressed(e.out)
 				e.draw(s)
-				drawTopBorder(s)
+				e.setDirty(s, true)
 			case tcell.KeyRune:
-				e.dirty = true
 				e.insertRuneAtCurrentPosition(e.out, ev.Rune())
 				e.draw(s)
-				drawTopBorder(s)
+				e.setDirty(s, true)
 			case tcell.KeyCtrlC:
 				if e.isSelecting() {
 					e.copySelection()
@@ -748,18 +749,16 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				} else {
 					e.pasteHeadline()
 				}
-				e.dirty = true
 				e.draw(s)
-				drawTopBorder(s)
+				e.setDirty(s, true)
 			case tcell.KeyCtrlX:
 				if e.isSelecting() {
 					e.cutSelection()
 				} else {
 					e.cutHeadline()
 				}
-				e.dirty = true
 				e.draw(s)
-				drawTopBorder(s)
+				e.setDirty(s, true)
 			case tcell.KeyCtrlS:
 				if currentFilename == "" {
 					f := prompt(s, "Filename: ")
@@ -767,24 +766,23 @@ func (e *editor) handleEvents(s tcell.Screen) {
 						currentFilename = f
 						err := e.save(filepath.Join(org.currentDirectory, currentFilename))
 						if err == nil {
-							e.dirty = false
-							setFileTitle(currentFilename)
+							e.setDirty(s, false)
 						} else {
 							msg := fmt.Sprintf("Error saving file: %v", err)
 							prompt(s, msg)
 						}
+						org.refresh(s)
+						drawScreen(s)
 					}
 				} else {
-					e.dirty = false
 					e.save(filepath.Join(org.currentDirectory, currentFilename))
+					e.setDirty(s, false)
 				}
-				org.refresh(s)
-				drawScreen(s)
 			case tcell.KeyCtrlT:
 				e.editOutlineTitle(s, e.out)
-				e.dirty = true
 				drawTopBorder(s)
 				e.draw(s)
+				e.setDirty(s, true)
 			case tcell.KeyEscape:
 				if e.isSelecting() { // Clear any selection
 					e.sel = nil
