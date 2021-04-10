@@ -733,6 +733,14 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				e.insertRuneAtCurrentPosition(e.out, ev.Rune())
 				e.draw(s)
 				e.setDirty(s, true)
+			case tcell.KeyCtrlB:
+				if e.out.Bullets == glyphBullet { // TODO: This will need to change when we support more bullet types
+					e.out.Bullets = noBullet
+				} else {
+					e.out.Bullets = glyphBullet
+				}
+				e.draw(s)
+				e.setDirty(s, true)
 			case tcell.KeyCtrlC:
 				if e.isSelecting() {
 					e.copySelection()
@@ -778,7 +786,6 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				}
 			case tcell.KeyCtrlT:
 				e.editOutlineTitle(s, e.out)
-				drawTopBorder(s)
 				e.draw(s)
 				e.setDirty(s, true)
 			case tcell.KeyEscape:

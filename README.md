@@ -12,6 +12,13 @@ Editor
 * Cut/Paste selected text
 * Copy/Cut/Paste Headlines [should be entire Headline, not portion thereof]
 * Background saves (set up a semaphore so that edits don't conflict with an in-progress save happening via goroutine)
+* Add text searching (CTRL-F)- scan forward/backward through matches
+* SHIFT-CTRL-UP/DOWN - collapse or expand all Headlines
+* Better use of color
+    * identify collapsed Headlines (maybe a bit dimmer?)
+    * make bullets a different color than text?
+    * soften the highlight on selected text
+    * change color of a copied Headline (and its children)
 
 Organizer
 * Scrolling of organizer contents

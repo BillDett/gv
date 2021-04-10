@@ -16,6 +16,7 @@ each time.
 type Outline struct {
 	Title         string            // describes an outline in the Organizer
 	Headlines     []*Headline       // list of top level headlines (this denotes the structure of the outline)
+	Bullets       bulletStyle       // how should bullets be represented?
 	headlineIndex map[int]*Headline // index to all Headlines (keyed by ID- this makes serialization easier than using pointers)
 }
 
@@ -29,6 +30,16 @@ type Headline struct {
 	Children []*Headline
 }
 
+// Supporting different styles of bullets (eventually)
+type bulletStyle int
+
+const (
+	noBullet bulletStyle = iota
+	glyphBullet
+	alphaBullet
+	romanBullet
+)
+
 const nodeDelim = '\ufeff'
 
 const emptyHeadlineText = string(nodeDelim) // every Headline's text ends with a nonprinting rune so we can append to it easily
@@ -37,7 +48,7 @@ var dbg int
 var dbg2 int
 
 func newOutline(title string) *Outline {
-	o := &Outline{title, []*Headline{}, make(map[int]*Headline)}
+	o := &Outline{title, []*Headline{}, glyphBullet, make(map[int]*Headline)}
 	return o
 }
 

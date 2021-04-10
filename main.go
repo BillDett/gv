@@ -216,23 +216,29 @@ func layoutOutline(s tcell.Screen) {
 func layoutHeadline(s tcell.Screen, e *editor, o *Outline, h *Headline, level int, y int) int {
 	var bullet rune
 	endY := y
-	if len(h.Children) != 0 {
-		if h.Expanded {
-			bullet = small_vtriangle
-		} else {
-			bullet = small_htriangle
-		}
-	} else {
-		bullet = small_bullet
-	}
 	indent := e.org.width + (level * 3)
-	hangingIndent := indent + 3
+	var hangingIndent int
+	switch o.Bullets {
+	case glyphBullet:
+		if len(h.Children) != 0 {
+			if h.Expanded {
+				bullet = small_vtriangle
+			} else {
+				bullet = small_htriangle
+			}
+		} else {
+			bullet = small_bullet
+		}
+		hangingIndent = indent + 3
+	case noBullet:
+		bullet = ' '
+		hangingIndent = indent
+	}
 	text := h.Buf.Runes()
 	pos := 0
 	end := len(*text)
 	firstLine := true
 	for pos < end {
-		//endPos := pos + e.editorWidth
 		endPos := pos + e.editorWidth - (level * 3) - 2
 		if endPos > end { // overshot end of text, we're on the first or last fragment
 			var mybullet rune
