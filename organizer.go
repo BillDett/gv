@@ -235,7 +235,6 @@ func (org *organizer) handleEvents(s tcell.Screen, o *Outline) {
 			case tcell.KeyCtrlQ:
 				proceed := true
 				if ed.dirty {
-					// Prompt to save current outline first
 					proceed = ed.saveFirst(s)
 				}
 				if proceed {

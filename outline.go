@@ -24,7 +24,7 @@ type Outline struct {
 type Headline struct {
 	ID       int
 	ParentID int
-	Expanded bool
+	Expanded bool       // should Headline's children be rendered?
 	Buf      PieceTable // buffer holding the text of the headline
 	Children []*Headline
 }
@@ -196,6 +196,7 @@ func (o *Outline) previousHeadline(ID int, e *editor) *Headline {
 }
 
 // Find the "current" Headline
+// TODO: this is kind of clunky- wonder if this should be a method of editor instead??
 func (o *Outline) currentHeadline(e *editor) *Headline {
 	return o.headlineIndex[e.currentHeadlineID]
 }

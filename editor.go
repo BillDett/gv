@@ -486,9 +486,16 @@ Split the current Headline's text at the cursor point.  Put all text from cursor
 new Headline that is the next sibling of current Headline.
 */
 func (e *editor) enterPressed(o *Outline) {
+	currentHeadline := o.currentHeadline(e)
+
+	// If the Headlne has children and is collapsed, just move cursor down to next line instead, we can't add children now
+	if !currentHeadline.Expanded && len(currentHeadline.Children) != 0 {
+		e.moveEnd(false)
+		e.moveDown()
+		return
+	}
 
 	// "Split" current Headline at cursor position and create a new Headline with remaining text
-	currentHeadline := o.currentHeadline(e)
 	text := (*currentHeadline.Buf.Runes())
 	newText := text[e.currentPosition : len(text)-1] // Extract remaining text (except trailing nodeDelim)
 	currentHeadline.Buf.Delete(e.currentPosition, len(newText))
@@ -637,18 +644,6 @@ func (e *editor) editOutlineTitle(s tcell.Screen, o *Outline) {
 	}
 }
 
-// Collapse the current headline and all children
-//  (this just marks each headline as invisible)
-func (e *editor) collapse() {
-
-}
-
-// Expand the current headline (if necessary) and all children
-//  (this just marks each headline as visible)
-func (e *editor) expand() {
-
-}
-
 // Clear out the contents of the organizer's window
 //  We depend on the caller to eventually do s.Show()
 func (e *editor) clear(s tcell.Screen) {
@@ -680,7 +675,8 @@ func (e *editor) handleEvents(s tcell.Screen) {
 			switch ev.Key() {
 			case tcell.KeyDown:
 				if mod == tcell.ModCtrl {
-					e.expand()
+					e.out.currentHeadline(e).Expanded = true
+					e.setDirty(s, true)
 				} else if mod == tcell.ModShift {
 					e.selectDown()
 				} else {
@@ -689,7 +685,8 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				e.draw(s)
 			case tcell.KeyUp:
 				if mod == tcell.ModCtrl {
-					e.collapse()
+					e.out.currentHeadline(e).Expanded = false
+					e.setDirty(s, true)
 				} else if mod == tcell.ModShift {
 					e.selectUp()
 				} else {
@@ -713,7 +710,11 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				e.draw(s)
 				e.setDirty(s, true)
 			case tcell.KeyDelete:
-				e.delete(e.out)
+				if mod == tcell.ModCtrl {
+					e.deleteHeadline(e.out)
+				} else {
+					e.delete(e.out)
+				}
 				e.draw(s)
 				e.setDirty(s, true)
 			case tcell.KeyEnter:
@@ -738,9 +739,6 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				} else {
 					e.copyHeadline()
 				}
-			case tcell.KeyCtrlD:
-				e.deleteHeadline(e.out)
-				e.draw(s)
 			case tcell.KeyCtrlF: // for debugging
 				e.out.dump(e)
 			case tcell.KeyCtrlV:
@@ -797,7 +795,6 @@ func (e *editor) handleEvents(s tcell.Screen) {
 			case tcell.KeyCtrlQ:
 				proceed := true
 				if e.dirty {
-					// Prompt to save current outline first
 					proceed = e.saveFirst(s)
 				}
 				if proceed {

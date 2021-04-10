@@ -37,6 +37,7 @@ const htriangle = '\u25B6'
 const small_htriangle = '\u25B8'
 const vtriangle = '\u25BC'
 const small_vtriangle = '\u25BE'
+const small_bullet = '\u2022'
 const solid_bullet = '\u25CF'
 const open_bullet = '\u25CB'
 const tri_bullet = '\u2023'
@@ -215,10 +216,14 @@ func layoutOutline(s tcell.Screen) {
 func layoutHeadline(s tcell.Screen, e *editor, o *Outline, h *Headline, level int, y int) int {
 	var bullet rune
 	endY := y
-	if h.Expanded {
-		bullet = vtriangle
+	if len(h.Children) != 0 {
+		if h.Expanded {
+			bullet = small_vtriangle
+		} else {
+			bullet = small_htriangle
+		}
 	} else {
-		bullet = solid_bullet
+		bullet = small_bullet
 	}
 	indent := e.org.width + (level * 3)
 	hangingIndent := indent + 3
@@ -260,8 +265,11 @@ func layoutHeadline(s tcell.Screen, e *editor, o *Outline, h *Headline, level in
 		pos = endPos
 	}
 
-	for _, h := range h.Children {
-		endY = layoutHeadline(s, e, o, h, level+1, endY)
+	// Unless headline is collapsed, render its children
+	if h.Expanded {
+		for _, h := range h.Children {
+			endY = layoutHeadline(s, e, o, h, level+1, endY)
+		}
 	}
 
 	return endY
