@@ -7,7 +7,6 @@ GV
 * Save defaults into the storage directory (e.g. color schemes, last opened, enable background saves, etc).  Use a generic name/value pair structure.
 
 Editor
-* Support Outline titles when saving (generate filename, no need to prompt when doing CTRL-S)
 * More navigation (PgUp/PgDown)
 * Cut/Paste selected text
 * Copy/Cut/Paste Headlines [should be entire Headline, not portion thereof]
@@ -23,7 +22,7 @@ Editor
 Organizer
 * Scrolling of organizer contents
 * Organizer width should be dynamic percentage of overall window (update on resize)
-* Organizer entries should render outline titles, not filenames
+* Put last accessed outilne at top of Organizer?
 
 Bugs
 * When saving/loading multiple times it seems like the editor gets out of sync & starts adding siblings as children.  Something is not being updated correctly.

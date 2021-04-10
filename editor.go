@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,6 +58,8 @@ type selection struct {
 var currentLine int // which "line" we are currently on
 var cursX int       // X coordinate of the cursor
 var cursY int       // Y coordinate of the cursor
+
+var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 func (e *editor) setScreenSize(s tcell.Screen) {
 	var width int
@@ -128,12 +131,33 @@ func (e *editor) newOutline(s tcell.Screen) error {
 			e.linePtr = 0
 			e.topLine = 0
 			e.dirty = true
-			currentFilename = ""
+			currentFilename = e.generateFilename()
 			e.sel = nil
 			setFileTitle(currentFilename)
+			e.save(filepath.Join(org.currentDirectory, currentFilename))
 		}
 	}
 	return nil
+}
+
+func (e *editor) generateFilename() string {
+	filename := strings.ToLower(e.out.Title)
+	filename = strings.Replace(filename, " ", "_", -1)
+	maxLen := 10 // Cap prefix at this length
+	if maxLen > len(e.out.Title) {
+		maxLen = len(e.out.Title)
+	}
+	filename = filename[0:maxLen]
+	filename = fmt.Sprintf("%s%s.gv", filename, randSeq(5))
+	return filename
+}
+
+func randSeq(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
 }
 
 // user wants to open this outline, save an existing, dirty one first

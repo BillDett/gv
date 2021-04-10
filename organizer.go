@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -80,7 +81,11 @@ func (org *organizer) readDirectory() ([]*entry, error) {
 	for _, info := range files {
 		if info.Mode().IsRegular() {
 			if strings.HasSuffix(info.Name(), ".gv") {
-				outlines = append(outlines, newEntry(info.Name(), info.Name(), false))
+				title, err := org.getTitleFrom(filepath.Join(org.currentDirectory, info.Name()))
+				if err != nil {
+					return nil, err
+				}
+				outlines = append(outlines, newEntry(title, info.Name(), false))
 			}
 		} else if info.Mode().IsDir() && !strings.HasPrefix(info.Name(), ".") {
 			folders = append(folders, newEntry(info.Name(), info.Name(), true))
@@ -96,6 +101,26 @@ func (org *organizer) readDirectory() ([]*entry, error) {
 	}
 	result = append(result, folders...)
 	result = append(result, outlines...)
+	return result, nil
+}
+
+// peek inside the outline file and return the Title field
+// TODO: This could be very slow for large numbers of outlines...how can we do this w/out unmarshaling entire outline?
+func (org *organizer) getTitleFrom(filename string) (string, error) {
+	buf, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return "", err
+	}
+	// Extract the outline JSON
+	var out Outline
+	err = json.Unmarshal(buf, &out)
+	if err != nil {
+		return "", err
+	}
+	result := "no title"
+	if out.Title != "" {
+		result = out.Title
+	}
 	return result, nil
 }
 
@@ -243,6 +268,8 @@ func (org *organizer) handleEvents(s tcell.Screen, o *Outline) {
 				}
 			case tcell.KeyCtrlO:
 				ed.newOutline(s)
+				org.refresh(s)
+				org.draw(s)
 				done = true
 			case tcell.KeyCtrlF:
 				org.newFolder(s)
