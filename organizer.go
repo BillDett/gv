@@ -33,6 +33,7 @@ Delete on a folder does nothing.
 */
 
 type organizer struct {
+	baseDir          string // base directory for gv's files
 	directory        string // where is Organizer looking for outline files?
 	currentDirectory string // what directory are we currently in?
 	width            int    // width of the Organizer
@@ -55,9 +56,8 @@ func newEntry(n string, f string, d bool) *entry {
 	return &entry{n, f, d}
 }
 
-func newOrganizer(directory string, height int) *organizer {
-	// TODO: We should look in $GVHOME or $HOME/.gv/outlines
-	return &organizer{directory, directory, organizerWidth, height, nil, 0, 0, false}
+func newOrganizer(dir string, storageDir string, height int) *organizer {
+	return &organizer{dir, storageDir, storageDir, organizerWidth, height, nil, 0, 0, false}
 }
 
 func (org *organizer) refresh(s tcell.Screen) {
@@ -267,7 +267,7 @@ func (org *organizer) handleEvents(s tcell.Screen, o *Outline) {
 					os.Exit(0)
 				}
 			case tcell.KeyCtrlO:
-				ed.newOutline(s)
+				ed.newOutline(s, "")
 				org.refresh(s)
 				org.draw(s)
 				done = true

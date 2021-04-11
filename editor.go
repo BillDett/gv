@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 )
@@ -64,15 +65,15 @@ var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 func (e *editor) setScreenSize(s tcell.Screen) {
 	var width int
 	width, height := s.Size()
-	//e.editorWidth = int(float64(width-e.org.width-3) * 0.9)
 	e.editorWidth = width - e.org.width - 3
 	e.editorHeight = height - 3 // 2 rows for border, 1 row for interaction
 }
 
-func newEditor(org *organizer) *editor {
-	o := newOutline("")
-	ed := &editor{org, o, nil, 0, 0, 0, 0, 0, 0, false, nil, nil, nil}
-	o.init(ed)
+func newEditor(s tcell.Screen, org *organizer) *editor {
+	//o := newOutline("New Outline")
+	ed := &editor{org, nil, nil, 0, 0, 0, 0, 0, 0, false, nil, nil, nil}
+	ed.newOutline(s, "New Outline")
+	//o.init(ed)
 	return ed
 }
 
@@ -80,7 +81,7 @@ func (e *editor) isSelecting() bool { return e.sel != nil }
 
 // save the outline buffer to a file
 func (e *editor) save(filename string) error {
-	buf, err := json.Marshal(ed.out)
+	buf, err := json.Marshal(e.out)
 	if err != nil {
 		return err
 	}
@@ -102,7 +103,6 @@ func (e *editor) saveFirst(s tcell.Screen) bool {
 					err := e.save(filepath.Join(org.currentDirectory, currentFilename))
 					if err == nil {
 						e.dirty = false
-						setFileTitle(currentFilename)
 						org.refresh(s)
 					} else {
 						msg := fmt.Sprintf("Error saving file: %v", err)
@@ -117,14 +117,16 @@ func (e *editor) saveFirst(s tcell.Screen) bool {
 }
 
 // user wants to create a new outline, save an existing, dirty one first
-func (e *editor) newOutline(s tcell.Screen) error {
+func (e *editor) newOutline(s tcell.Screen, title string) error {
 	proceed := true
 	if e.dirty {
 		// Prompt to save current outline first
 		proceed = e.saveFirst(s)
 	}
 	if proceed {
-		title := prompt(s, "Enter new outline title:")
+		if title == "" {
+			title = prompt(s, "Enter new outline title:")
+		}
 		if title != "" {
 			e.out = newOutline(title)
 			e.out.init(e)
@@ -133,7 +135,6 @@ func (e *editor) newOutline(s tcell.Screen) error {
 			e.dirty = true
 			currentFilename = e.generateFilename()
 			e.sel = nil
-			setFileTitle(currentFilename)
 			e.save(filepath.Join(org.currentDirectory, currentFilename))
 		}
 	}
@@ -154,6 +155,7 @@ func (e *editor) generateFilename() string {
 
 func randSeq(n int) string {
 	b := make([]rune, n)
+	rand.Seed(time.Now().Unix())
 	for i := range b {
 		b[i] = letters[rand.Intn(len(letters))]
 	}
@@ -171,7 +173,6 @@ func (e *editor) open(s tcell.Screen, filename string) error {
 		err := ed.load(filename)
 		if err == nil {
 			currentFilename = filepath.Base(filename)
-			setFileTitle(currentFilename)
 		} else {
 			msg := fmt.Sprintf("Error opening file: %v", err)
 			prompt(s, msg)

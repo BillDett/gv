@@ -2,7 +2,9 @@ package main
 
 import (
 	_ "embed"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	_ "net/http/pprof"
 	"os"
 	"path/filepath"
@@ -11,6 +13,10 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 )
+
+type config map[string]string
+
+var cfg *config
 
 var currentFilename string
 
@@ -46,6 +52,7 @@ const shear_bullet = '\u25B0'
 const box_bullet = '\u25A0'
 
 var defStyle tcell.Style
+var borderStyle tcell.Style
 var buttonStyle tcell.Style
 var fileStyle tcell.Style
 var dirStyle tcell.Style
@@ -53,6 +60,8 @@ var selectedStyle tcell.Style
 
 var org *organizer
 var ed *editor
+
+const defaultConfigFilename = "gv.conf"
 
 var storageDirectory string
 
@@ -83,7 +92,7 @@ func drawFrame(s tcell.Screen, x, y, width, height int) {
 
 func writeString(s tcell.Screen, x int, y int, text string) {
 	for c, r := range []rune(text) {
-		s.SetContent(x+c, y, r, nil, defStyle)
+		s.SetContent(x+c, y, r, nil, borderStyle)
 	}
 }
 
@@ -108,10 +117,10 @@ func showHelp(s tcell.Screen) {
 
 func drawBorder(s tcell.Screen, x, y, width, height int) {
 	// Corners
-	s.SetContent(x, y, tlcorner, nil, defStyle)
-	s.SetContent(x+width-1, y, trcorner, nil, defStyle)
-	s.SetContent(x, y+height-1, llcorner, nil, defStyle)
-	s.SetContent(x+width-1, y+height-1, lrcorner, nil, defStyle)
+	s.SetContent(x, y, tlcorner, nil, borderStyle)
+	s.SetContent(x+width-1, y, trcorner, nil, borderStyle)
+	s.SetContent(x, y+height-1, llcorner, nil, borderStyle)
+	s.SetContent(x+width-1, y+height-1, lrcorner, nil, borderStyle)
 	tb := renderTopBorder()
 	bb := renderBottomBorder(width - 2)
 	if len(*tb) != len(*bb) {
@@ -121,14 +130,14 @@ func drawBorder(s tcell.Screen, x, y, width, height int) {
 	}
 	// Horizontal
 	for bx := 0; bx < len(*tb); bx++ {
-		s.SetContent(bx+x+1, y, (*tb)[bx], nil, defStyle)
-		s.SetContent(bx+x+1, y+height-1, (*bb)[bx], nil, defStyle)
+		s.SetContent(bx+x+1, y, (*tb)[bx], nil, borderStyle)
+		s.SetContent(bx+x+1, y+height-1, (*bb)[bx], nil, borderStyle)
 	}
 	// Vertical
 	for by := y + 1; by < y+height-1; by++ {
-		s.SetContent(x, by, vline, nil, defStyle)
-		s.SetContent(org.width+1, by, vline, nil, defStyle)
-		s.SetContent(x+width-1, by, vline, nil, defStyle)
+		s.SetContent(x, by, vline, nil, borderStyle)
+		s.SetContent(org.width+1, by, vline, nil, borderStyle)
+		s.SetContent(x+width-1, by, vline, nil, borderStyle)
 	}
 }
 
@@ -136,7 +145,7 @@ func drawBorder(s tcell.Screen, x, y, width, height int) {
 func drawTopBorder(s tcell.Screen) {
 	tb := renderTopBorder()
 	for bx := 1; bx < len(*tb); bx++ {
-		s.SetContent(bx+1, 0, (*tb)[bx], nil, defStyle)
+		s.SetContent(bx+1, 0, (*tb)[bx], nil, borderStyle)
 	}
 	s.Show()
 }
@@ -190,11 +199,6 @@ func renderBottomBorder(width int) *[]rune {
 		row = append(row, hline)
 	}
 	return &row
-}
-
-func setFileTitle(filename string) {
-	fileTitle = []rune("Filename: ")
-	fileTitle = append(fileTitle, []rune(filename)...)
 }
 
 func layoutOutline(s tcell.Screen) {
@@ -333,10 +337,10 @@ func genTestOutline(s tcell.Screen, e *editor) *Outline {
 }
 
 func drawScreen(s tcell.Screen) {
+	ed.setScreenSize(s)
 	s.Clear()
 	drawBorder(s, 0, 0, screenWidth, screenHeight-1)
 	org.draw(s)
-	ed.setScreenSize(s)
 	layoutOutline(s)
 	renderOutline(s)
 	s.ShowCursor(cursX, cursY) // TODO: This should only be done if editor is in focus
@@ -404,22 +408,102 @@ func prompt(s tcell.Screen, msg string) string {
 }
 
 // Confirm that storage is set up; default to $HOME/.gv/outlines or use $GVHOME
-func setupStorage() (string, error) {
-	storageDirectory, found := os.LookupEnv("GVHOME")
+//  return the base application directory and location of outline files
+func setupStorage() (string, string, error) {
+	dir, found := os.LookupEnv("GVHOME")
 	if !found {
 		var err error
-		storageDirectory, err = os.UserHomeDir()
+		dir, err = os.UserHomeDir()
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		storageDirectory = filepath.Join(storageDirectory, "/.gv")
+		dir = filepath.Join(dir, "/.gv")
 	}
-	storageDirectory = filepath.Join(storageDirectory, "/outlines")
+	storageDirectory := filepath.Join(dir, "/outlines")
 	err := os.MkdirAll(storageDirectory, 0700)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return storageDirectory, nil
+	return dir, storageDirectory, nil
+}
+
+// Try to load the configuration.  If it does not exist, first initialize it
+func loadConfig(dir string) (*config, error) {
+	filePath := filepath.Join(dir, defaultConfigFilename)
+	_, err := os.Stat(filePath)
+	if os.IsNotExist(err) {
+		err = saveConfig(filePath, initConfig())
+		if err != nil {
+			return nil, err
+		}
+	}
+	buf, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	// Extract the config JSON
+	var c config
+	err = json.Unmarshal(buf, &c)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+func initConfig() *config {
+	c := config{
+		"backgroundColor":  "black",
+		"borderColor":      "white",
+		"defaultTextColor": "powderblue",
+		"linkColor":        "blue",
+		"listColor":        "yellow",
+	}
+	return &c
+}
+
+func saveConfig(filePath string, c *config) error {
+	buf, err := json.MarshalIndent(c, "", "   ")
+	if err != nil {
+		return err
+	}
+	ioutil.WriteFile(filePath, buf, 0644)
+	return nil
+}
+
+func colorFor(name string) tcell.Color {
+	color, found := tcell.ColorNames[(*cfg)[name]]
+	if !found {
+		return tcell.ColorWhite
+	} else {
+		return color
+	}
+}
+
+func setColors() {
+	defStyle = tcell.StyleDefault.
+		Background(colorFor("backgroundColor")).
+		Foreground(colorFor("defaultTextColor"))
+
+	borderStyle = tcell.StyleDefault.
+		Background(colorFor("backgroundColor")).
+		Foreground(colorFor("borderColor"))
+
+	buttonStyle = tcell.StyleDefault.
+		Background(colorFor("backgroundColor")).
+		Foreground(colorFor("borderColor"))
+
+	fileStyle = tcell.StyleDefault.
+		Background(colorFor("backgroundColor")).
+		Foreground(colorFor("listColor"))
+
+	dirStyle = tcell.StyleDefault.
+		Background(colorFor("backgroundColor")).
+		Foreground(colorFor("linkColor")).
+		Underline(true)
+
+	selectedStyle = tcell.StyleDefault.
+		Background(colorFor("defaultTextColor")).
+		Foreground(colorFor("backgroundColor"))
 }
 
 func main() {
@@ -434,43 +518,32 @@ func main() {
 		os.Exit(1)
 	}
 
-	screenWidth, screenHeight = s.Size()
-
-	defStyle = tcell.StyleDefault.
-		Background(tcell.ColorBlack).
-		Foreground(tcell.ColorPowderBlue)
-
-	buttonStyle = tcell.StyleDefault.
-		Background(tcell.ColorBlack).
-		Foreground(tcell.ColorYellow)
-
-	fileStyle = tcell.StyleDefault.
-		Background(tcell.ColorBlack).
-		Foreground(tcell.ColorWhite)
-
-	dirStyle = tcell.StyleDefault.
-		Background(tcell.ColorBlack).
-		Foreground(tcell.ColorBlue).
-		Underline(true)
-
-	selectedStyle = tcell.StyleDefault.
-		Background(tcell.ColorPowderBlue).
-		Foreground(tcell.ColorBlack)
-
-	s.SetStyle(defStyle)
-
-	_, height := s.Size()
-
-	directory, err := setupStorage()
+	directory, storageDirectory, err := setupStorage()
 	if err != nil {
 		s.Fini()
 		fmt.Printf("Unable to set up storage: %v\n", err)
 		os.Exit(1)
 	}
 
-	org = newOrganizer(directory, height)
+	// Load the application config
+	cfg, err = loadConfig(directory)
+	if err != nil {
+		s.Fini()
+		fmt.Printf("Error trying to load config from %s\n", directory)
+		os.Exit(1)
+	}
+
+	setColors()
+
+	screenWidth, screenHeight = s.Size()
+
+	s.SetStyle(defStyle)
+
+	_, height := s.Size()
+
+	org = newOrganizer(directory, storageDirectory, height)
 	org.refresh(s)
-	ed = newEditor(org)
+	ed = newEditor(s, org)
 
 	drawScreen(s)
 
