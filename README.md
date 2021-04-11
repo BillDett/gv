@@ -3,8 +3,7 @@
 A DIY take on the old DOS GrandView app that was very good at managing outlines.
 
 GV
-* Remember last opened outline and re-open when we launch.  If first time launching, just create an empty outline.
-* Save defaults into the storage directory (e.g. color schemes, last opened, enable background saves, etc).  Use a generic name/value pair structure.
+* Add a little API to this so we can push new outlines to it and/or pull outlines if desired (start API only via cmdline flag).
 
 Editor
 * More navigation (PgUp/PgDown)

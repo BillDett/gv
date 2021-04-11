@@ -70,10 +70,13 @@ func (e *editor) setScreenSize(s tcell.Screen) {
 }
 
 func newEditor(s tcell.Screen, org *organizer) *editor {
-	//o := newOutline("New Outline")
 	ed := &editor{org, nil, nil, 0, 0, 0, 0, 0, 0, false, nil, nil, nil}
-	ed.newOutline(s, "New Outline")
-	//o.init(ed)
+	lastOutlineFilePath, found := cfg[lastOpenedOutlineCfgKey]
+	if found {
+		ed.open(s, lastOutlineFilePath)
+	} else {
+		ed.newOutline(s, "New Outline")
+	}
 	return ed
 }
 
@@ -116,6 +119,12 @@ func (e *editor) saveFirst(s tcell.Screen) bool {
 	return false
 }
 
+// store this filePath as last opened Outline
+func (e *editor) rememberOutline(filePath string) {
+	cfg[lastOpenedOutlineCfgKey] = filePath
+	saveConfig()
+}
+
 // user wants to create a new outline, save an existing, dirty one first
 func (e *editor) newOutline(s tcell.Screen, title string) error {
 	proceed := true
@@ -135,7 +144,9 @@ func (e *editor) newOutline(s tcell.Screen, title string) error {
 			e.dirty = true
 			currentFilename = e.generateFilename()
 			e.sel = nil
-			e.save(filepath.Join(org.currentDirectory, currentFilename))
+			filePath := filepath.Join(org.currentDirectory, currentFilename)
+			e.save(filePath)
+			e.rememberOutline(filePath)
 		}
 	}
 	return nil
@@ -163,20 +174,21 @@ func randSeq(n int) string {
 }
 
 // user wants to open this outline, save an existing, dirty one first
-func (e *editor) open(s tcell.Screen, filename string) error {
+func (e *editor) open(s tcell.Screen, filePath string) error {
 	proceed := true
 	if e.dirty {
 		// Prompt to save current outline first
 		proceed = e.saveFirst(s)
 	}
 	if proceed {
-		err := ed.load(filename)
+		err := e.load(filePath)
 		if err == nil {
-			currentFilename = filepath.Base(filename)
+			currentFilename = filepath.Base(filePath)
 		} else {
 			msg := fmt.Sprintf("Error opening file: %v", err)
 			prompt(s, msg)
 		}
+		e.rememberOutline(filePath)
 	}
 	return nil
 }

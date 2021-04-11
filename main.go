@@ -16,7 +16,7 @@ import (
 
 type config map[string]string
 
-var cfg *config
+var cfg config
 
 var currentFilename string
 
@@ -62,6 +62,10 @@ var org *organizer
 var ed *editor
 
 const defaultConfigFilename = "gv.conf"
+
+var configFilePath string
+
+const lastOpenedOutlineCfgKey = "lastOpenedOutline"
 
 var storageDirectory string
 
@@ -428,50 +432,49 @@ func setupStorage() (string, string, error) {
 }
 
 // Try to load the configuration.  If it does not exist, first initialize it
-func loadConfig(dir string) (*config, error) {
-	filePath := filepath.Join(dir, defaultConfigFilename)
-	_, err := os.Stat(filePath)
+//  Set the configuration filePath
+func loadConfig(dir string) error {
+	configFilePath = filepath.Join(dir, defaultConfigFilename)
+	_, err := os.Stat(configFilePath)
 	if os.IsNotExist(err) {
-		err = saveConfig(filePath, initConfig())
+		initConfig()
+		err = saveConfig()
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
-	buf, err := ioutil.ReadFile(filePath)
-	if err != nil {
-		return nil, err
-	}
-	// Extract the config JSON
-	var c config
-	err = json.Unmarshal(buf, &c)
-	if err != nil {
-		return nil, err
-	}
-	return &c, nil
-}
-
-func initConfig() *config {
-	c := config{
-		"backgroundColor":  "black",
-		"borderColor":      "white",
-		"defaultTextColor": "powderblue",
-		"linkColor":        "blue",
-		"listColor":        "yellow",
-	}
-	return &c
-}
-
-func saveConfig(filePath string, c *config) error {
-	buf, err := json.MarshalIndent(c, "", "   ")
+	buf, err := ioutil.ReadFile(configFilePath)
 	if err != nil {
 		return err
 	}
-	ioutil.WriteFile(filePath, buf, 0644)
+	// Extract the config JSON
+	err = json.Unmarshal(buf, &cfg)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// Default configuration if none is available
+func initConfig() {
+	cfg["backgroundColor"] = "black"
+	cfg["borderColor"] = "white"
+	cfg["defaultTextColor"] = "powderblue"
+	cfg["linkColor"] = "blue"
+	cfg["listColor"] = "yellow"
+}
+
+func saveConfig() error {
+	buf, err := json.MarshalIndent(cfg, "", "   ")
+	if err != nil {
+		return err
+	}
+	ioutil.WriteFile(configFilePath, buf, 0644)
 	return nil
 }
 
 func colorFor(name string) tcell.Color {
-	color, found := tcell.ColorNames[(*cfg)[name]]
+	color, found := tcell.ColorNames[cfg[name]]
 	if !found {
 		return tcell.ColorWhite
 	} else {
@@ -526,7 +529,7 @@ func main() {
 	}
 
 	// Load the application config
-	cfg, err = loadConfig(directory)
+	err = loadConfig(directory)
 	if err != nil {
 		s.Fini()
 		fmt.Printf("Error trying to load config from %s\n", directory)
