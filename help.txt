@@ -1,4 +1,4 @@
-
+gv (v0.1-alpha)
 Use ESC to toggle between Organizer and Editor
 
 Common Commands
