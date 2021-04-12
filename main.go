@@ -457,6 +457,7 @@ func loadConfig(dir string) error {
 
 // Default configuration if none is available
 func initConfig() {
+	cfg = make(config)
 	cfg["backgroundColor"] = "black"
 	cfg["borderColor"] = "white"
 	cfg["defaultTextColor"] = "powderblue"
@@ -545,8 +546,8 @@ func main() {
 	_, height := s.Size()
 
 	org = newOrganizer(directory, storageDirectory, height)
-	org.refresh(s)
 	ed = newEditor(s, org)
+	org.refresh(s)
 
 	drawScreen(s)
 
