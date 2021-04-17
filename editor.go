@@ -63,10 +63,10 @@ var cursY int       // Y coordinate of the cursor
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 func (e *editor) setScreenSize(s tcell.Screen) {
-	var width int
-	width, height := s.Size()
-	e.editorWidth = width - e.org.width - 3
-	e.editorHeight = height - 3 // 2 rows for border, 1 row for interaction
+	//var width int
+	//width, height := s.Size()
+	e.editorWidth = screenWidth - e.org.width - 3
+	e.editorHeight = screenHeight - 3 // 2 rows for border, 1 row for interaction
 }
 
 func newEditor(s tcell.Screen, org *organizer) *editor {
@@ -229,7 +229,7 @@ func (e *editor) recordLogicalLine(id int, bullet rune, indent int, hangingInden
 // Clear out the contents of the organizer's window
 //  We depend on the caller to eventually do s.Show()
 func (e *editor) clear(s tcell.Screen) {
-	offset := organizerWidth + 2
+	offset := e.org.width + 2
 	for y := 1; y < screenHeight-2; y++ {
 		for x := offset; x < screenWidth-1; x++ {
 			s.SetContent(x, y, ' ', nil, defStyle)

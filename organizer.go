@@ -50,14 +50,19 @@ type entry struct {
 	isDir    bool
 }
 
-var organizerWidth int = 20
+var organizerWidthPercent float64 = 0.20
 
 func newEntry(n string, f string, d bool) *entry {
 	return &entry{n, f, d}
 }
 
-func newOrganizer(dir string, storageDir string, height int) *organizer {
-	return &organizer{dir, storageDir, storageDir, organizerWidth, height, nil, 0, 0, false}
+func newOrganizer(dir string, storageDir string) *organizer {
+	return &organizer{dir, storageDir, storageDir, 0, 0, nil, 0, 0, false}
+}
+
+func (org *organizer) setScreenSize(s tcell.Screen) {
+	org.width = int(organizerWidthPercent * float64(screenWidth-3))
+	org.height = screenHeight
 }
 
 func (org *organizer) refresh(s tcell.Screen) {

@@ -21,7 +21,6 @@ Editor
 
 Organizer
 * Scrolling of organizer contents
-* Organizer width should be dynamic percentage of overall window (update on resize)
 * Put last accessed outilne at top of Organizer?
 * Cross-outline searches in the Organizer (like ripgrep).  Show the search results in the Organizer.  ESC to clear.
 

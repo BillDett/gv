@@ -318,30 +318,10 @@ func renderOutline(s tcell.Screen) {
 	}
 }
 
-func genTestOutline(s tcell.Screen, e *editor) *Outline {
-	o := newOutline("Sample")
-	o.addHeadline("What is this odd beast GrandView?", -1)                                                                                                                                                                                                                                                                                                             // 1
-	o.addHeadline("In a single-pane outliner, all the components of your outline and its accompanying information are visible in one window.", 1)                                                                                                                                                                                                                      // 2
-	o.addHeadline("Project and task manager", 2)                                                                                                                                                                                                                                                                                                                       // 3
-	o.addHeadline("Information manager", 2)                                                                                                                                                                                                                                                                                                                            // 4
-	o.addHeadline("Here's a headline that has children hidden", -1)                                                                                                                                                                                                                                                                                                    // 5
-	o.addHeadline("Here's a headline that has no children", -1)                                                                                                                                                                                                                                                                                                        // 6
-	o.addHeadline("What makes GrandView so unique even today?  How is it possible that such a product like this could exist?", 6)                                                                                                                                                                                                                                      // 7
-	o.addHeadline("Multiple Views", 7)                                                                                                                                                                                                                                                                                                                                 // 8
-	o.addHeadline("ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890", 7)                                                                                                                             // 9
-	o.addHeadline("Outline View", 7)                                                                                                                                                                                                                                                                                                                                   // 10
-	o.addHeadline("You can associate any headline (node) with a document. Document view is essentially a hoist that removes all the other elements of your outline from the screen so you can focus on writing the one document. When you are done writing this document (or section of your outline), you can return to outline view, where your document text.", 10) // 11
-	o.addHeadline("Category & Calendar Views", 7)                                                                                                                                                                                                                                                                                                                      // 12
-	o.addHeadline("Way over the top.", 2)                                                                                                                                                                                                                                                                                                                              // 13
-	o.addHeadline("ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVW XYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCEFGHIJKLMNOPQRSTUVWXYZ123456 7890ABCEFGHIJKLMNOPQRSTUVWXYZ1234567890", 13)                                                                                                                          // 14
-	o.addHeadline("Fully customizable meta-data", 14)
-	e.currentHeadlineID = 1
-	e.currentPosition = 0
-	return o
-}
-
 func drawScreen(s tcell.Screen) {
+	screenWidth, screenHeight = s.Size()
 	ed.setScreenSize(s)
+	org.setScreenSize(s)
 	s.Clear()
 	drawBorder(s, 0, 0, screenWidth, screenHeight-1)
 	org.draw(s)
@@ -543,9 +523,7 @@ func main() {
 
 	s.SetStyle(defStyle)
 
-	_, height := s.Size()
-
-	org = newOrganizer(directory, storageDirectory, height)
+	org = newOrganizer(directory, storageDirectory)
 	ed = newEditor(s, org)
 	org.refresh(s)
 
