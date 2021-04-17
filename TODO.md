@@ -23,6 +23,7 @@ Organizer
 * Scrolling of organizer contents
 * Organizer width should be dynamic percentage of overall window (update on resize)
 * Put last accessed outilne at top of Organizer?
+* Cross-outline searches in the Organizer (like ripgrep).  Show the search results in the Organizer.  ESC to clear.
 
 Bugs
 * When saving/loading multiple times it seems like the editor gets out of sync & starts adding siblings as children.  Something is not being updated correctly.
@@ -30,6 +31,7 @@ Bugs
 * Crash when trying to load a zero-byte or malformed .gv file
 * drawScreen should only showCursor if editor is handling events
 * Kind of weird behavior when selecting up then down right afterwards..is that what users would expect?
+* Panic (editor_navigation.go:96) when adding lots of blank lines, causing a scroll, and then backspacing to delete them all.
 * Bug when un-indenting first of several children.  Unindented child 'keeps' its subseqeuent siblings as its own children.
     * Start with:
         - One
