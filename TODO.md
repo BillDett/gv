@@ -5,6 +5,8 @@ README
 
 GV
 * Add a little API to this so we can push new outlines to it and/or pull outlines if desired (start API only via cmdline flag).
+* Better visual cue whether the Organizer or the Editor is currently in focus (maybe dim out the colors of the contents or titlebar?)
+* Add some Outline statistics on bottom right of screen (# lines, # headlines, # words, etc)
 
 Editor
 * More navigation (PgUp/PgDown)
@@ -26,12 +28,10 @@ Organizer
 * Show a visual indicator in right border when Organizer contents extend above or beyond current view
 
 Bugs
-* When saving/loading multiple times it seems like the editor gets out of sync & starts adding siblings as children.  Something is not being updated correctly.
 * Resizing window really small causes an exception (top and bottom borders not same size anymore)
 * Crash when trying to load a zero-byte or malformed .gv file
 * drawScreen should only showCursor if editor is handling events
 * Kind of weird behavior when selecting up then down right afterwards..is that what users would expect?
-* Panic (editor_navigation.go:96) when adding lots of blank lines, causing a scroll, and then backspacing to delete them all.
 * Bug when un-indenting first of several children.  Unindented child 'keeps' its subseqeuent siblings as its own children.
     * Start with:
         - One

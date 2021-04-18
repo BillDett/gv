@@ -23,6 +23,7 @@ func (e *editor) insertRuneAtCurrentPosition(o *Outline, r rune) {
 }
 
 // Remove the previous character.  Join this Headline to the previous Headline if on first character
+// BUG: backspace on first line, but have scrolled, no bullet, navigation panics
 func (e *editor) backspace(o *Outline) {
 	if e.currentPosition == 0 && e.linePtr == 0 { // Do nothing if on first character of first headline
 		return
@@ -48,7 +49,8 @@ func (e *editor) backspace(o *Outline) {
 				// Remove me from my parent and make previous Headline the current one
 				_, children := o.childrenSliceFor(currentHeadline.ID)
 				o.removeChildFrom(children, currentHeadline.ID)
-				e.currentHeadlineID = previousHeadline.ID
+				e.moveUp()
+				//e.currentHeadlineID = previousHeadline.ID
 			}
 		}
 	}
