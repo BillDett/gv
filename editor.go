@@ -215,6 +215,8 @@ func (e *editor) load(filename string) error {
 	}
 	e.currentHeadlineID = e.out.Headlines[0].ID
 	e.currentPosition = 0
+	e.linePtr = 0
+	e.topLine = 0
 	e.dirty = false
 	e.sel = nil
 	return nil

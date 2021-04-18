@@ -325,8 +325,7 @@ func drawScreen(s tcell.Screen) {
 	s.Clear()
 	drawBorder(s, 0, 0, screenWidth, screenHeight-1)
 	org.draw(s)
-	layoutOutline(s)
-	renderOutline(s)
+	ed.draw(s)
 	s.ShowCursor(cursX, cursY) // TODO: This should only be done if editor is in focus
 	s.Show()
 }
