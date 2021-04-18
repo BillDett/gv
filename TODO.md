@@ -9,7 +9,6 @@ GV
 * Add some Outline statistics on bottom right of screen (# lines, # headlines, # words, etc)
 
 Editor
-* More navigation (PgUp/PgDown)
 * Cut/Paste selected text
 * Copy/Cut/Paste Headlines [should be entire Headline, not portion thereof]
 * Background saves (set up a semaphore so that edits don't conflict with an in-progress save happening via goroutine)
@@ -24,7 +23,7 @@ Editor
 
 Organizer
 * Put last accessed outilne at top of Organizer?
-* Cross-outline searches in the Organizer (like ripgrep).  Show the search results in the Organizer.  ESC to clear.
+* Cross-outline searches in the Organizer (like ripgrep).  Show the search results in the Organizer.  ESC to clear.  (https://gobyexample.com/line-filters would get us started on a simple 'grep')
 * Show a visual indicator in right border when Organizer contents extend above or beyond current view
 
 Bugs

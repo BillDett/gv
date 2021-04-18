@@ -154,6 +154,21 @@ func (e *editor) selectDown() bool {
 	return false
 }
 
+func (e *editor) pageDown() {
+	if (e.topLine + e.editorHeight) < len(e.lineIndex) { // Make sure we have at least a "page" beneath us
+		e.linePtr += e.editorHeight
+		if e.linePtr >= len(e.lineIndex) {
+			e.linePtr = len(e.lineIndex) - 1
+		}
+		e.currentPosition = e.lineIndex[e.linePtr].position
+		e.currentHeadlineID = e.lineIndex[e.linePtr].headlineID
+		e.topLine += e.editorHeight
+		if e.topLine >= len(e.lineIndex) {
+			e.topLine = len(e.lineIndex) - e.editorHeight
+		}
+	}
+}
+
 func (e *editor) moveUp() {
 	if e.linePtr != 0 { // Do nothing if on first logical line
 		offset := e.currentPosition - e.lineIndex[e.linePtr].position // how far 'in' are we on the logical line?
@@ -197,6 +212,19 @@ func (e *editor) selectUp() {
 		if e.linePtr != 0 && e.linePtr-e.topLine+1 == 1 {
 			e.topLine--
 		}
+	}
+}
+
+func (e *editor) pageUp() {
+	e.linePtr -= e.editorHeight
+	if e.linePtr < 0 {
+		e.linePtr = 0
+	}
+	e.currentPosition = e.lineIndex[e.linePtr].position
+	e.currentHeadlineID = e.lineIndex[e.linePtr].headlineID
+	e.topLine -= e.editorHeight
+	if e.topLine < 0 {
+		e.topLine = 0
 	}
 }
 

@@ -275,6 +275,12 @@ func (e *editor) handleEvents(s tcell.Screen) {
 					e.moveUp()
 				}
 				e.draw(s)
+			case tcell.KeyPgUp:
+				e.pageUp()
+				e.draw(s)
+			case tcell.KeyPgDn:
+				e.pageDown()
+				e.draw(s)
 			case tcell.KeyRight:
 				e.moveRight(mod == tcell.ModShift)
 				e.draw(s)
