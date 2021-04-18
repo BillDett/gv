@@ -443,6 +443,7 @@ func initConfig() {
 	cfg["defaultTextColor"] = "powderblue"
 	cfg["linkColor"] = "blue"
 	cfg["listColor"] = "yellow"
+	cfg["orgWidthPercent"] = "0.20"
 }
 
 func saveConfig() error {

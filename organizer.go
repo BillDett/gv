@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -50,8 +51,6 @@ type entry struct {
 	isDir    bool
 }
 
-var organizerWidthPercent float64 = 0.20
-
 func newEntry(n string, f string, d bool) *entry {
 	return &entry{n, f, d}
 }
@@ -61,8 +60,20 @@ func newOrganizer(dir string, storageDir string) *organizer {
 }
 
 func (org *organizer) setScreenSize(s tcell.Screen) {
-	org.width = int(organizerWidthPercent * float64(screenWidth-3))
-	org.height = screenHeight
+	var pct float64
+	fallback := 0.50
+	pctStr, ok := cfg["orgWidthPercent"]
+	if !ok {
+		pct = fallback // Safe default just in case it's not in config
+	} else {
+		var err error
+		pct, err = strconv.ParseFloat(pctStr, 2)
+		if err != nil {
+			pct = fallback // Ignore parsing error, just default
+		}
+	}
+	org.width = int(pct * float64(screenWidth-3))
+	org.height = screenHeight - 2
 }
 
 func (org *organizer) refresh(s tcell.Screen) {
@@ -132,7 +143,7 @@ func (org *organizer) getTitleFrom(filename string) (string, error) {
 // Clear out the contents of the organizer's window
 //  We depend on the caller to eventually do s.Show()
 func (org *organizer) clear(s tcell.Screen) {
-	for y := 1; y < ed.editorHeight; y++ {
+	for y := 1; y < org.height; y++ {
 		for x := 1; x < org.width; x++ {
 			s.SetContent(x, y, ' ', nil, defStyle)
 		}
@@ -141,7 +152,8 @@ func (org *organizer) clear(s tcell.Screen) {
 
 // draw the visible contents of the organizer
 func (org *organizer) draw(s tcell.Screen) {
-	org.height = screenHeight - 2
+	org.clear(s)
+	org.height = screenHeight - 2 // TODO: TAKE THIS OUT & MOVE TO setScrenSize() ?
 	width := org.width - 1
 	y := 1
 	for c := org.topLine; c < len(org.entries); c++ {
@@ -149,11 +161,10 @@ func (org *organizer) draw(s tcell.Screen) {
 			style := fileStyle
 			if org.inFocus && c == org.currentLine {
 				style = selectedStyle
-				//} else if c < 2 {
-				//	style = buttonStyle
 			} else if org.entries[c].isDir {
 				style = dirStyle
 			}
+			// Write out the entry name
 			for x, r := range org.entries[c].name {
 				if x < width {
 					if x == width-1 { // probably will go over width of organizer, just use an ellipsis
@@ -252,11 +263,17 @@ func (org *organizer) handleEvents(s tcell.Screen, o *Outline) {
 			case tcell.KeyDown:
 				if org.currentLine < len(org.entries)-1 {
 					org.currentLine++
+					if org.currentLine-org.topLine+1 >= org.height { // Scroll?
+						org.topLine++
+					}
 					org.draw(s)
 				}
 			case tcell.KeyUp:
 				if org.currentLine != 0 {
 					org.currentLine--
+					if org.currentLine != 0 && org.currentLine-org.topLine+1 == 1 { // Scroll?
+						org.topLine--
+					}
 					org.draw(s)
 				}
 			case tcell.KeyEnter:

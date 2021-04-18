@@ -18,11 +18,12 @@ Editor
     * make bullets a different color than text?
     * soften the highlight on selected text
     * change color of a copied Headline (and its children)
+* Show a visual indicator in right border when Editor contents extend above or beyond current view
 
 Organizer
-* Scrolling of organizer contents
 * Put last accessed outilne at top of Organizer?
 * Cross-outline searches in the Organizer (like ripgrep).  Show the search results in the Organizer.  ESC to clear.
+* Show a visual indicator in right border when Organizer contents extend above or beyond current view
 
 Bugs
 * When saving/loading multiple times it seems like the editor gets out of sync & starts adding siblings as children.  Something is not being updated correctly.
