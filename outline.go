@@ -49,7 +49,7 @@ var dbg int
 var dbg2 int
 
 func newOutline(title string) *Outline {
-	o := &Outline{title, []*Headline{}, glyphBullet, false, make(map[int]*Headline)}
+	o := &Outline{title, []*Headline{}, glyphBullet, true, make(map[int]*Headline)}
 	return o
 }
 

@@ -13,6 +13,7 @@ Editor
 * Copy/Cut/Paste Headlines [should be entire Headline, not portion thereof]
 * Background saves (set up a semaphore so that edits don't conflict with an in-progress save happening via goroutine)
 * Add text searching (CTRL-F)- scan forward/backward through matches
+* "Splitting" a headline with enter key at first character should not make the Headline a child of an empty Headline- it should just make the Headline a sibling (looks weird when it turns into a child underneath a blank line)
 * SHIFT-CTRL-UP/DOWN - collapse or expand all Headlines
 * Better use of color
     * identify collapsed Headlines (maybe a bit dimmer?)
