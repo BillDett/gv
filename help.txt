@@ -14,6 +14,7 @@ Editor Commands
     SHIFT-ARROWKEY - Select text within a Headline
     CTRL-C - Copy Text/Headline   CTRL-X - Cut Text/Headline
     CTRL-V - Paste Text/Headline  CTRL-B - Toggle Bullets
+    CTRL-L - Toggle Multi-List
     CTRL-DEL - Delete Headline    CTRL-S - Save Outline
     CTRL-UP - Collapse Headline   CTRL-DOWN - Expand Headline
 

@@ -339,6 +339,10 @@ func (e *editor) handleEvents(s tcell.Screen) {
 				}
 			case tcell.KeyCtrlF: // for debugging
 				e.out.dump(e)
+			case tcell.KeyCtrlL:
+				e.out.MultiList = !e.out.MultiList
+				e.draw(s)
+				e.setDirty(s, true)
 			case tcell.KeyCtrlV:
 				if e.isSelecting() {
 					e.pasteSelection()

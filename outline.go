@@ -17,6 +17,7 @@ type Outline struct {
 	Title         string            // describes an outline in the Organizer
 	Headlines     []*Headline       // list of top level headlines (this denotes the structure of the outline)
 	Bullets       bulletStyle       // how should bullets be represented?
+	MultiList     bool              // Is Outline a single or multiple Lists?
 	headlineIndex map[int]*Headline // index to all Headlines (keyed by ID- this makes serialization easier than using pointers)
 }
 
@@ -48,7 +49,7 @@ var dbg int
 var dbg2 int
 
 func newOutline(title string) *Outline {
-	o := &Outline{title, []*Headline{}, glyphBullet, make(map[int]*Headline)}
+	o := &Outline{title, []*Headline{}, glyphBullet, false, make(map[int]*Headline)}
 	return o
 }
 

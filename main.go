@@ -226,21 +226,26 @@ func layoutHeadline(s tcell.Screen, e *editor, o *Outline, h *Headline, level in
 	endY := y
 	indent := e.org.width + (level * 3)
 	var hangingIndent int
-	switch o.Bullets {
-	case glyphBullet:
-		if len(h.Children) != 0 {
-			if h.Expanded {
-				bullet = small_vtriangle
-			} else {
-				bullet = small_htriangle
-			}
-		} else {
-			bullet = small_bullet
-		}
-		hangingIndent = indent + 3
-	case noBullet:
+	if e.out.MultiList && level == 1 { // For multi-list, we don't render a bullet for top level headlines
 		bullet = ' '
 		hangingIndent = indent
+	} else {
+		switch o.Bullets {
+		case glyphBullet:
+			if len(h.Children) != 0 {
+				if h.Expanded {
+					bullet = small_vtriangle
+				} else {
+					bullet = small_htriangle
+				}
+			} else {
+				bullet = small_bullet
+			}
+			hangingIndent = indent + 3
+		case noBullet:
+			bullet = ' '
+			hangingIndent = indent
+		}
 	}
 	text := h.Buf.Runes()
 	pos := 0

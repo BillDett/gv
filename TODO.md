@@ -25,6 +25,8 @@ Organizer
 * Put last accessed outilne at top of Organizer?
 * Cross-outline searches in the Organizer (like ripgrep).  Show the search results in the Organizer.  ESC to clear.  (https://gobyexample.com/line-filters would get us started on a simple 'grep')
 * Show a visual indicator in right border when Organizer contents extend above or beyond current view
+* Ability to copy/cut/paste Outlines into folders using CTRL-C/CTRL-X/CTRL-V
+  * Use a different color for Outline in Organizer when it's been copied, remove it when it's cut
 
 Bugs
 * Resizing window really small causes an exception (top and bottom borders not same size anymore)
