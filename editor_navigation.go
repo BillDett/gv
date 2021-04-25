@@ -6,6 +6,7 @@ Navigation methods for the editor.
 
 */
 
+// TODO: Split the navigation and selection logic into different methods (like up/down)
 func (e *editor) moveRight(shiftPressed bool) {
 	origPosition := e.currentPosition
 	previousHeadlineID := e.currentHeadlineID
@@ -54,6 +55,7 @@ func (e *editor) moveRight(shiftPressed bool) {
 	}
 }
 
+// TODO: Split the navigation and selection logic into different methods (like up/down)
 func (e *editor) moveLeft(shiftPressed bool) {
 	if e.currentPosition == 0 && e.linePtr == 0 { // Do nothing if on first character of first headline
 		return

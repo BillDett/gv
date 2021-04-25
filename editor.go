@@ -63,8 +63,6 @@ var cursY int       // Y coordinate of the cursor
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 func (e *editor) setScreenSize(s tcell.Screen) {
-	//var width int
-	//width, height := s.Size()
 	e.editorWidth = screenWidth - e.org.width - 3
 	e.editorHeight = screenHeight - 3 // 2 rows for border, 1 row for interaction
 }
@@ -240,9 +238,9 @@ func (e *editor) clear(s tcell.Screen) {
 }
 
 func (e *editor) draw(s tcell.Screen) {
-	layoutOutline(s)
+	e.layoutOutline(s)
 	e.clear(s)
-	renderOutline(s)
+	e.renderOutline(s)
 	s.ShowCursor(cursX, cursY)
 	s.Show()
 }
