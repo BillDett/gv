@@ -4,6 +4,10 @@
 
 `gv` is an outliner that runs in a console window.  It's not a text editor, but it does primarily deal with the management of text.  It's not a word processor, but it does try to nicely format your outline for you.  It's an outliner first and foremost, designed to quickly create, edit and manage lots of outlines.
 
+<p align="center">
+<img src="gv.PNG" width=60%>
+</p>
+
 Outlines are a great way to structure your notes and lists.  I find it my natural method of tracking information for work or my personal life.  Sure, you can use any old text editor these days to create a bulleted list, but it's not an *outline*.  Outlines are designed to be created non-linearly.  As ideas flow, outline sections should be free to move around while you clarify your thoughts.  An outline is fluid, not static.  It's inherently non-linear, helping you to categorize and encapsulate concepts into structures.  gv was designed to make it easier to work with outlines as a collection of text objects (instead of just sequential text created as a list).
 
 ## Getting Started
