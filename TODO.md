@@ -1,7 +1,7 @@
 # TODO in gv
 
 README
-* Get a screenshot in there
+* Replace screenshot with asciicinema once colors/UX stabilized
 
 GV
 * Add a little API to this so we can push new outlines to it and/or pull outlines if desired (start API only via cmdline flag).
@@ -30,6 +30,7 @@ Organizer
   * Use a different color for Outline in Organizer when it's been copied, remove it when it's cut
 
 Bugs
+* Changing the title of a "New Outline" doesnt update in the Organizer
 * Resizing window really small causes an exception (top and bottom borders not same size anymore)
 * Crash when trying to load a zero-byte or malformed .gv file
 * drawScreen should only showCursor if editor is handling events
