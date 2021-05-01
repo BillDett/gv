@@ -4,6 +4,7 @@ README
 * Replace screenshot with asciicinema once colors/UX stabilized
 
 GV
+* Move our data model on top of boltdb instead of raw filesystem.  Will give us some more flexibility to add features over time.  Store everything into a single boltdb database file (organizer metadata, outlines, search index, etc..).  Add a `gv --export` flag that dumps out all of the outlines and organizer metadata into plain files in case we want to move to a different tool.
 * Add a little API to this so we can push new outlines to it and/or pull outlines if desired (start API only via cmdline flag).
 * Better visual cue whether the Organizer or the Editor is currently in focus (maybe dim out the colors of the contents or titlebar?)
 * Add some Outline statistics on bottom right of screen (# lines, # headlines, # words, etc)
@@ -24,7 +25,7 @@ Editor
 
 Organizer
 * Put last accessed outilne at top of Organizer?
-* Cross-outline searches in the Organizer (like ripgrep).  Show the search results in the Organizer.  ESC to clear.  (https://gobyexample.com/line-filters would get us started on a simple 'grep')
+* Cross-outline searches in the Organizer (like ripgrep).  Show the search results in the Organizer.  ESC to clear.  (https://gobyexample.com/line-filters would get us started on a simple 'grep') [SEE ABOVE ON boltdb- MAKES THIS SIMPLER]
 * Show a visual indicator in right border when Organizer contents extend above or beyond current view
 * Ability to copy/cut/paste Outlines into folders using CTRL-C/CTRL-X/CTRL-V
   * Use a different color for Outline in Organizer when it's been copied, remove it when it's cut
