@@ -59,12 +59,13 @@ var org *organizer
 var ed *editor
 
 const defaultConfigFilename = "gv.conf"
+const defaultIndexFilename = "gv_index.json"
 
 var configFilePath string
 
 const lastOpenedOutlineCfgKey = "lastOpenedOutline"
 
-var storageDirectory string
+//var storageDirectory string
 
 //go:embed help.txt
 var helptext string
@@ -407,7 +408,12 @@ func main() {
 
 	s.SetStyle(defStyle)
 
-	org = newOrganizer(directory, storageDirectory)
+	org, err = newOrganizer(directory, storageDirectory)
+	if err != nil {
+		s.Fini()
+		fmt.Printf("Unable to create organizer: %v\n", err)
+		os.Exit(1)
+	}
 	ed = newEditor(s, org)
 	org.refresh(s)
 

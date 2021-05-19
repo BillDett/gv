@@ -34,29 +34,98 @@ Delete on a folder does nothing.
 */
 
 type organizer struct {
-	baseDir          string // base directory for gv's files
-	directory        string // where is Organizer looking for outline files?
-	currentDirectory string // what directory are we currently in?
-	width            int    // width of the Organizer
-	height           int    // height of the Organizer
-	entries          []*entry
-	currentLine      int  // the current position within the list of outlines
-	topLine          int  // index of the topmost outline of the Organizer
-	inFocus          bool // Is the organizer currently in focus?
+	baseDir          string       // base directory for gv's files
+	directory        string       // where is Organizer looking for outline files?
+	currentDirectory string       // what directory are we currently in?
+	width            int          // width of the Organizer
+	height           int          // height of the Organizer
+	folderIndex      *FolderIndex // index of all Folder metadata
+	entries          []*entry     // the current list of entry values for current folder
+	currentLine      int          // the current position within the list of outlines
+	topLine          int          // index of the topmost outline of the Organizer
+	inFocus          bool         // Is the organizer currently in focus?
 }
 
+// one line in the organizer window (either a Folder or an outline file)
 type entry struct {
 	name     string
 	filename string
 	isDir    bool
 }
 
+// Metadata for our Folders - map key is fully qualified pathname to the Folder's directory
+//  Save this index to disk whenever we create/remove/rename a Folder
+type FolderIndex map[string]*Folder
+
+type Folder struct {
+	Name string
+	// TODO: Add some more metadata someday
+}
+
 func newEntry(n string, f string, d bool) *entry {
 	return &entry{n, f, d}
 }
 
-func newOrganizer(dir string, storageDir string) *organizer {
-	return &organizer{dir, storageDir, storageDir, 0, 0, nil, 0, 0, false}
+func newOrganizer(dir string, storageDir string) (*organizer, error) {
+	indexFilePath := filepath.Join(dir, defaultIndexFilename)
+	fi, err := loadFolderIndex(indexFilePath)
+	if err != nil {
+		fmt.Printf("didn't load...\n")
+		fi, err = createFolderIndex(indexFilePath, storageDir)
+		if err != nil { // As a last ditch effort, just make an empty FolderIndex
+			fmt.Printf("didn't create...\n")
+			//fi = &FolderIndex{}
+			return nil, err
+		}
+	}
+	return &organizer{dir, storageDir, storageDir, 0, 0, fi, nil, 0, 0, false}, nil
+}
+
+// Try to load the FolderIndex from the file
+func loadFolderIndex(filename string) (*FolderIndex, error) {
+	buf, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	var fi FolderIndex
+	err = json.Unmarshal(buf, &fi)
+	if err != nil {
+		return nil, err
+	}
+	return &fi, nil
+}
+
+// Create a new FolderIndex and populate with default values for any directories already present
+func createFolderIndex(filename string, storageDir string) (*FolderIndex, error) {
+	fi := make(FolderIndex)
+	err := filepath.Walk(storageDir,
+		func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				fi[path] = &Folder{info.Name()} // TODO: MAKE RELATIVE PATH?
+			}
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	err = saveFolderIndex(&fi, filename)
+	if err != nil {
+		return &fi, err
+	}
+	return &fi, nil
+}
+
+// Write the FolderIndex to the given filename
+func saveFolderIndex(fi *FolderIndex, filename string) error {
+	buf, err := json.Marshal(fi)
+	if err != nil {
+		return err
+	}
+	ioutil.WriteFile(filename, buf, 0644)
+	return nil
 }
 
 func (org *organizer) setScreenSize(s tcell.Screen) {
