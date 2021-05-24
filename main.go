@@ -65,8 +65,6 @@ var configFilePath string
 
 const lastOpenedOutlineCfgKey = "lastOpenedOutline"
 
-//var storageDirectory string
-
 //go:embed help.txt
 var helptext string
 
@@ -157,7 +155,7 @@ func renderTopBorder() *[]rune {
 	maxTitleWidth := int(float64(ed.editorWidth) * 0.8) // Set maximum title size so we don't run over
 
 	// Organizer
-	foldername := []rune(filepath.Base(org.currentDirectory)) // TODO: Ensure this is < org.width-3
+	foldername := []rune(filepath.Base(org.currentName)) // TODO: Ensure this is < org.width-3
 	if len(foldername) > org.width-3 {
 		foldername = foldername[:org.width-4]
 		foldername = append(foldername, ellipsis)

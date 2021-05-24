@@ -24,18 +24,14 @@ Editor
 
 Organizer
 * Finish adding the FolderIndex stuff
-  * Get a Folder title from the user (not a filename).  Generate the underlying directory filename from the title.
-  * Change the create folderIndex code to put in a relative path for each directory found.
-  * Update the org.folderIndex accordingly when adding/removing a folder.  Be sure to write the org.folderIndex out after each change.  Remember to use relative paths...
-  * Render the Folder.Name for the corresponding entry in the org.folderIndex for each Folder being shown as an entry in the organizer.
-    * Will probably need to do some path magic to get the key right.
+  * BUG: When navigating 'up' the tree of folders, the Organizer top border label is set to ".." and not the actual parent's name.
   * Implement a way to 'rename' a folder w/out changing the directory name
-    * Does this mean we should use some sort of random UUID instead of a mnemonic name?
 * Put last accessed outilne at top of Organizer?
 * Cross-outline searches in the Organizer (like ripgrep).  Show the search results in the Organizer.  ESC to clear.  (https://gobyexample.com/line-filters would get us started on a simple 'grep')
 * Show a visual indicator in right border when Organizer contents extend above or beyond current view
 * Ability to copy/cut/paste Outlines into folders using CTRL-C/CTRL-X/CTRL-V
   * Use a different color for Outline in Organizer when it's been copied, remove it when it's cut
+* BUG: Cursor does not get set to first item in the list when drilling into a sub-folder.
 
 Bugs
 * Changing the title of a "New Outline" doesnt update in the Organizer

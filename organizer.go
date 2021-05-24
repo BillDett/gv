@@ -34,12 +34,14 @@ Delete on a folder does nothing.
 */
 
 type organizer struct {
-	baseDir          string       // base directory for gv's files
+	baseDir          string       // base directory for gv's config and data files
 	directory        string       // where is Organizer looking for outline files?
 	currentDirectory string       // what directory are we currently in?
+	currentName      string       // name of the current directory (from metadata)
 	width            int          // width of the Organizer
 	height           int          // height of the Organizer
 	folderIndex      *FolderIndex // index of all Folder metadata
+	indexFilePath    string       // filepath to the folder index file
 	entries          []*entry     // the current list of entry values for current folder
 	currentLine      int          // the current position within the list of outlines
 	topLine          int          // index of the topmost outline of the Organizer
@@ -66,19 +68,16 @@ func newEntry(n string, f string, d bool) *entry {
 	return &entry{n, f, d}
 }
 
-func newOrganizer(dir string, storageDir string) (*organizer, error) {
-	indexFilePath := filepath.Join(dir, defaultIndexFilename)
+func newOrganizer(baseDir string, storageDir string) (*organizer, error) {
+	indexFilePath := filepath.Join(baseDir, defaultIndexFilename)
 	fi, err := loadFolderIndex(indexFilePath)
 	if err != nil {
-		fmt.Printf("didn't load...\n")
-		fi, err = createFolderIndex(indexFilePath, storageDir)
-		if err != nil { // As a last ditch effort, just make an empty FolderIndex
-			fmt.Printf("didn't create...\n")
-			//fi = &FolderIndex{}
+		fi, err = createFolderIndex(indexFilePath, baseDir, storageDir)
+		if err != nil {
 			return nil, err
 		}
 	}
-	return &organizer{dir, storageDir, storageDir, 0, 0, fi, nil, 0, 0, false}, nil
+	return &organizer{baseDir, storageDir, storageDir, "outlines", 0, 0, fi, indexFilePath, nil, 0, 0, false}, nil
 }
 
 // Try to load the FolderIndex from the file
@@ -96,7 +95,7 @@ func loadFolderIndex(filename string) (*FolderIndex, error) {
 }
 
 // Create a new FolderIndex and populate with default values for any directories already present
-func createFolderIndex(filename string, storageDir string) (*FolderIndex, error) {
+func createFolderIndex(filename string, baseDir string, storageDir string) (*FolderIndex, error) {
 	fi := make(FolderIndex)
 	err := filepath.Walk(storageDir,
 		func(path string, info os.FileInfo, err error) error {
@@ -104,7 +103,7 @@ func createFolderIndex(filename string, storageDir string) (*FolderIndex, error)
 				return err
 			}
 			if info.IsDir() {
-				fi[path] = &Folder{info.Name()} // TODO: MAKE RELATIVE PATH?
+				fi[strings.TrimPrefix(path, baseDir)] = &Folder{info.Name()} // makes a relative path
 			}
 			return nil
 		})
@@ -126,6 +125,10 @@ func saveFolderIndex(fi *FolderIndex, filename string) error {
 	}
 	ioutil.WriteFile(filename, buf, 0644)
 	return nil
+}
+
+func (org *organizer) saveFolderIndex() error {
+	return saveFolderIndex(org.folderIndex, org.indexFilePath)
 }
 
 func (org *organizer) setScreenSize(s tcell.Screen) {
@@ -173,7 +176,16 @@ func (org *organizer) readDirectory() ([]*entry, error) {
 				outlines = append(outlines, newEntry(title, info.Name(), false))
 			}
 		} else if info.Mode().IsDir() && !strings.HasPrefix(info.Name(), ".") {
-			folders = append(folders, newEntry(info.Name(), info.Name(), true))
+			// Look up the Folder metadata so we can render the human-readablet title instead of the filename
+			theDir := strings.TrimPrefix(org.currentDirectory, org.baseDir)
+			folder, found := (*org.folderIndex)[filepath.Join(theDir, info.Name())]
+			var name string
+			if !found {
+				name = "FOLDER NOT FOUND IN INDEX"
+			} else {
+				name = folder.Name
+			}
+			folders = append(folders, newEntry(name, info.Name(), true))
 		}
 	}
 	// Sort everything nicely
@@ -254,6 +266,12 @@ func (org *organizer) entrySelected(s tcell.Screen) bool {
 	entry := org.entries[org.currentLine]
 	if entry.isDir {
 		org.currentDirectory = filepath.Join(org.currentDirectory, entry.filename)
+		/*
+			TODO: Bug here when entry.name = "..", we need to set it to the parent's name.
+				Perhaps in that case we need to generate the necessary key in folderIndex and
+				pull the name from that?
+		*/
+		org.currentName = entry.name
 		org.clear(s)
 		org.refresh(s)
 		drawTopBorder(s)
@@ -267,10 +285,17 @@ func (org *organizer) entrySelected(s tcell.Screen) bool {
 func (org *organizer) newFolder(s tcell.Screen) {
 	f := prompt(s, "Enter new Folder name: ")
 	if f != "" {
-		err := os.Mkdir(filepath.Join(org.currentDirectory, f), 0700)
+		fileName := generateFilename(f, "")
+		filePath := filepath.Join(org.currentDirectory, fileName)
+		err := os.Mkdir(filePath, 0700)
 		if err != nil {
 			msg := fmt.Sprintf("Error creating directory %s; %v", f, err)
 			prompt(s, msg)
+		} else {
+			key := strings.TrimPrefix(filePath, org.baseDir)
+			(*org.folderIndex)[key] = &Folder{f} // Add new folder to metadata index
+			org.currentName = f
+			org.saveFolderIndex()
 		}
 		org.clear(s)
 		org.refresh(s)
