@@ -4,12 +4,20 @@ README
 * Replace screenshot with asciicinema once colors/UX stabilized
 
 GV
+* Look at moving to a sqlite based datastore for everything (https://pkg.go.dev/modernc.org/sqlite)
 * Add a little API to this so we can push new outlines to it and/or pull outlines if desired (start API only via cmdline flag).
 * Better visual cue whether the Organizer or the Editor is currently in focus (maybe dim out the colors of the contents or titlebar?)
 * Add some Outline statistics on bottom right of screen (# lines, # headlines, # words, etc)
 
 Editor
-* Cut/Paste selected text
+* 'Raise' (CTRL-J) or 'Lower' (CTRL-K) Headlines.
+  * moves a Headline (an all of its children) up or down the screen, respecting hierarchies
+  * within current parent, Headline moves within siblings
+  * Raising when first child makes last child of previous Headline (or no-op if first Headline)
+  * Lowering when last child makes first child or next Headline (or no-op if last Headline)
+  * Preerve the Headline's expansion flag
+* Cut/Paste selected text - can we support the mouse for selection?
+  * Mouse selection should be constrained to the Editor window, not the entire terminal window
 * Copy/Cut/Paste Headlines [should be entire Headline, not portion thereof]
 * Background saves (set up a semaphore so that edits don't conflict with an in-progress save happening via goroutine)
 * Add text searching (CTRL-F)- scan forward/backward through matches
@@ -21,6 +29,7 @@ Editor
     * soften the highlight on selected text
     * change color of a copied Headline (and its children)
 * Show a visual indicator in right border when Editor contents extend above or beyond current view
+* Support custom keymappings.  Allow overrides on certain CTRL combos within the gv config file
 
 Organizer
 * Finish adding the FolderIndex stuff
@@ -36,6 +45,7 @@ Organizer
 Bugs
 * Changing the title of a "New Outline" doesnt update in the Organizer
 * Resizing window really small causes an exception (top and bottom borders not same size anymore)
+* When organizer sub-folder is empty, the up/down navigation highlight can get 'lost'- you need to poke up and down a bit to find it again.
 * Crash when trying to load a zero-byte or malformed .gv file
 * drawScreen should only showCursor if editor is handling events
 * Kind of weird behavior when selecting up then down right afterwards..is that what users would expect?
