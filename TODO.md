@@ -9,6 +9,17 @@ GV
 * Better visual cue whether the Organizer or the Editor is currently in focus (maybe dim out the colors of the contents or titlebar?)
 * Add some Outline statistics on bottom right of screen (# lines, # headlines, # words, etc)
 
+* Mouse support
+  * Keyboard should be our preferred method, but it's necessary to have some rudimentary support
+  * Editor
+    * Set the cursor position
+    * Use scroll wheel to move cursor up and down a line
+    * Select text within a single Headline (constrain the mouse Y range while selecting)
+  * Organizer
+    * Hover over entries highlights them
+    * Scroll wheel to scroll entries list up and down
+    * Click on entries to open them
+
 Editor
 * 'Raise' (CTRL-J) or 'Lower' (CTRL-K) Headlines.
   * moves a Headline (an all of its children) up or down the screen, respecting hierarchies
@@ -16,9 +27,10 @@ Editor
   * Raising when first child makes last child of previous Headline (or no-op if first Headline)
   * Lowering when last child makes first child or next Headline (or no-op if last Headline)
   * Preerve the Headline's expansion flag
-* Cut/Paste selected text - can we support the mouse for selection?
-  * Mouse selection should be constrained to the Editor window, not the entire terminal window
-* Copy/Cut/Paste Headlines [should be entire Headline, not portion thereof]
+* Copy/Cut/Paste
+  * CTRL-C/CTRL-X/CTRL-V
+  * Applies to any currently selected text 
+  * Applies to current Headline and it's children recursively (if no text selected)
 * Background saves (set up a semaphore so that edits don't conflict with an in-progress save happening via goroutine)
 * Add text searching (CTRL-F)- scan forward/backward through matches
 * "Splitting" a headline with enter key at first character should not make the Headline a child of an empty Headline- it should just make the Headline a sibling (looks weird when it turns into a child underneath a blank line)
